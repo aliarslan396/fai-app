@@ -1,0 +1,94 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Http\Controllers\Tenant\TenantAuthController;
+use App\Http\Controllers\Tenant\TenantSettingsController;
+use App\Http\Controllers\Tenant\UserController;
+use App\Http\Middleware\EnsureTenantActive;
+use Illuminate\Support\Facades\Route;
+use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
+use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
+
+/*
+|--------------------------------------------------------------------------
+| Tenant API Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('api/v1')
+    ->middleware([
+        'api',
+        InitializeTenancyByDomain::class,
+        PreventAccessFromCentralDomains::class,
+        EnsureTenantActive::class,
+    ])
+    ->group(function () {
+
+        // Tenant context info — public, no auth required
+        Route::get('tenant/info', function () {
+            $t = tenant();
+            $trialDaysLeft = null;
+            $trialExpired = false;
+            if ($t->trial_ends_at) {
+                $trialDaysLeft = max(0, now()->diffInDays($t->trial_ends_at, false));
+                $trialExpired = $t->trial_ends_at->isPast();
+            }
+
+            return response()->json([
+                'id' => $t->getTenantKey(),
+                'name' => $t->name,
+                'slug' => $t->slug,
+                'subdomain' => $t->subdomain,
+                'logo_url' => $t->logo_url,
+                'primary_color' => $t->primary_color,
+                'status' => $t->status,
+                'trial_ends_at' => $t->trial_ends_at?->toIso8601String(),
+                'trial_days_left' => $trialDaysLeft !== null ? (int) ceil($trialDaysLeft) : null,
+                'trial_expired' => $trialExpired,
+                'user_limit' => $t->user_limit,
+            ]);
+        })->withoutMiddleware([EnsureTenantActive::class]);
+
+        // Public auth endpoints
+        Route::prefix('auth')->group(function () {
+            Route::post('login', [TenantAuthController::class, 'login']);
+            Route::post('forgot-password', [TenantAuthController::class, 'forgotPassword']);
+            Route::post('reset-password', [TenantAuthController::class, 'resetPassword']);
+        });
+
+        // MFA verification — requires challenge token (Sanctum token with mfa-pending ability)
+        Route::middleware('auth:sanctum')->post('auth/verify-mfa', [TenantAuthController::class, 'verifyMfa']);
+
+        // Protected
+        Route::middleware('auth:sanctum')->group(function () {
+            Route::prefix('auth')->group(function () {
+                Route::post('logout', [TenantAuthController::class, 'logout']);
+                Route::get('me', [TenantAuthController::class, 'me']);
+                Route::post('mfa/setup', [TenantAuthController::class, 'setupMfa']);
+                Route::post('mfa/confirm', [TenantAuthController::class, 'confirmMfa']);
+                Route::post('mfa/disable', [TenantAuthController::class, 'disableMfa']);
+            });
+
+            Route::get('health', fn () => ['status' => 'ok', 'tenant' => tenant('id')]);
+
+            // Tenant settings (admin only via permission)
+            Route::prefix('settings')->group(function () {
+                Route::get('/', [TenantSettingsController::class, 'show']);
+                Route::patch('/', [TenantSettingsController::class, 'update']);
+                Route::post('logo', [TenantSettingsController::class, 'uploadLogo']);
+                Route::delete('logo', [TenantSettingsController::class, 'removeLogo']);
+            });
+
+            // User management
+            Route::prefix('users')->group(function () {
+                Route::get('/', [UserController::class, 'index']);
+                Route::post('/', [UserController::class, 'store']);
+                Route::get('{id}', [UserController::class, 'show']);
+                Route::patch('{id}', [UserController::class, 'update']);
+                Route::patch('{id}/disable', [UserController::class, 'disable']);
+                Route::patch('{id}/enable', [UserController::class, 'enable']);
+                Route::delete('{id}', [UserController::class, 'destroy']);
+            });
+        });
+    });

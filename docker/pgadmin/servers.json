@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "FAI Postgres",
+      "Group": "FAI",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "fai_app",
+      "Username": "fai_user",
+      "SSLMode": "prefer"
+    }
+  }
+}

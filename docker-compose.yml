@@ -1,0 +1,130 @@
+name: fai
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fai_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fai_app
+      POSTGRES_USER: fai_user
+      POSTGRES_PASSWORD: fai_secret_2026
+    ports:
+      - "5433:5432"
+    volumes:
+      - fai_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fai_user -d fai_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fai_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: fai_redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - fai_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - fai_network
+
+  adminer:
+    image: adminer:latest
+    container_name: fai_adminer
+    restart: unless-stopped
+    ports:
+      - "5050:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fai_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/php/Dockerfile
+    container_name: fai_backend
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+      - fai_backend_storage:/var/www/html/storage
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: php -S 0.0.0.0:8000 -t public
+    networks:
+      - fai_network
+
+  queue:
+    build:
+      context: ./backend
+      dockerfile: ../docker/php/Dockerfile
+    container_name: fai_queue
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+      - fai_backend_storage:/var/www/html/storage
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: php artisan queue:work --tries=3 --timeout=120
+    networks:
+      - fai_network
+
+  frontend:
+    image: node:20-alpine
+    container_name: fai_frontend
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - fai_frontend_node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+      NEXT_PUBLIC_APP_NAME: FAI
+    command: sh -c "npm install && npm run dev"
+    networks:
+      - fai_network
+
+volumes:
+  fai_postgres_data:
+  fai_redis_data:
+  fai_backend_storage:
+  fai_frontend_node_modules:
+
+networks:
+  fai_network:
+    driver: bridge
