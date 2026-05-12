@@ -110,15 +110,13 @@ export default function SignupPage() {
                 Your workspace login URL
               </p>
               <p className="font-mono text-sm break-all">
-                http://{result.tenant.subdomain}.localhost:3000/login
+                {result.login_url}
               </p>
             </div>
 
             <Button
               className="w-full"
-              onClick={() => {
-                window.location.href = `http://${result.tenant.subdomain}.localhost:3000/login`
-              }}
+              onClick={() => { window.location.href = result.login_url }}
             >
               Go to your workspace
             </Button>
