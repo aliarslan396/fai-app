@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import api from "@/lib/api"
 import { getErrorMessage, getValidationErrors } from "@/lib/errors"
+import { tenantDisplayHost } from "@/lib/url"
 
 const signupSchema = z.object({
   company_name: z.string().min(2, "Company name required").max(100),
@@ -176,11 +177,15 @@ export default function SignupPage() {
                     disabled={isLoading}
                     {...register("subdomain")}
                   />
-                  <span className="text-sm text-muted-foreground">.localhost</span>
+                  <span className="text-sm text-muted-foreground">
+                    .{typeof window !== "undefined" && window.location.hostname !== "localhost"
+                      ? window.location.hostname.split(".").slice(-2).join(".")
+                      : "localhost"}
+                  </span>
                 </div>
                 {subdomain && !errors.subdomain && (
                   <p className="text-xs text-muted-foreground">
-                    Your URL: <span className="font-mono">{subdomain}.localhost:3000</span>
+                    Your URL: <span className="font-mono">{tenantDisplayHost(subdomain)}</span>
                   </p>
                 )}
                 {errors.subdomain && (

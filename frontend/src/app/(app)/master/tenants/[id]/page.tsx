@@ -25,6 +25,7 @@ import {
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
 import { resolveAssetUrl } from "@/lib/tenant"
+import { tenantUrl, tenantDisplayHost } from "@/lib/url"
 
 interface Tenant {
   id: string
@@ -181,12 +182,12 @@ export default function TenantDetailPage() {
               </Badge>
             </div>
             <a
-              href={`http://${tenant.subdomain}.localhost:3000`}
+              href={tenantUrl(tenant.subdomain)}
               target="_blank"
               rel="noopener"
               className="mt-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
             >
-              {tenant.subdomain}.localhost
+              {tenantDisplayHost(tenant.subdomain)}
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>

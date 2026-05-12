@@ -39,6 +39,7 @@ import { EmptyState } from "@/components/empty-state"
 import { ErrorState } from "@/components/error-state"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
+import { tenantUrl, tenantDisplayHost } from "@/lib/url"
 
 interface Tenant {
   id: string
@@ -205,12 +206,12 @@ export default function MasterTenantsPage() {
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <a
-                        href={`http://${t.subdomain}.localhost:3000`}
+                        href={tenantUrl(t.subdomain)}
                         target="_blank"
                         rel="noopener"
                         className="inline-flex items-center gap-1 font-mono text-sm text-primary hover:underline"
                       >
-                        {t.subdomain}.localhost
+                        {tenantDisplayHost(t.subdomain)}
                         <ExternalLink className="h-3 w-3" />
                       </a>
                     </TableCell>
