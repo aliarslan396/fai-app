@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { Loader2, Rocket, CheckCircle2 } from "lucide-react"
+import { Check, Copy, Loader2, Rocket, CheckCircle2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +41,7 @@ export default function SignupPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<SignupResult | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const {
     register,
@@ -110,17 +111,40 @@ export default function SignupPage() {
               <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
                 Your workspace login URL
               </p>
-              <p className="font-mono text-sm break-all">
-                {result.login_url}
+              <div className="flex items-center gap-2">
+                <code className="flex-1 break-all rounded bg-background px-2 py-1.5 font-mono text-sm">
+                  {result.login_url}
+                </code>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(result.login_url)
+                      setCopied(true)
+                      toast.success("URL copied to clipboard")
+                      setTimeout(() => setCopied(false), 2000)
+                    } catch {
+                      toast.error("Copy failed — select and copy manually")
+                    }
+                  }}
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Copy this URL and open it in your browser to sign in to your workspace.
               </p>
             </div>
 
-            <Button
-              className="w-full"
-              onClick={() => { window.location.href = result.login_url }}
-            >
-              Go to your workspace
-            </Button>
+            <div className="border-t pt-4 text-center text-sm text-muted-foreground">
+              Bookmark this URL — you'll need it to access your workspace.
+            </div>
           </CardContent>
         </Card>
       </div>
