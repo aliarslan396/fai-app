@@ -1,28 +1,34 @@
 /**
  * Detect tenant from subdomain.
- * localhost or 127.0.0.1 → master (no tenant)
- * acme.localhost → tenant "acme"
- * inspections.acme.com → tenant "acme" (production custom domain)
+ * 2 parts (admicomhub.com) → master (no tenant)
+ * 3+ parts (acme.admicomhub.com) → tenant "acme"
+ * Exception: localhost/127.0.0.1 are always master.
  */
 
-const CENTRAL_HOSTS = ["localhost", "127.0.0.1", "fai.app"]
+const ALWAYS_CENTRAL = ["localhost", "127.0.0.1"]
 
 export function getTenantSlug(): string | null {
   if (typeof window === "undefined") return null
 
   const host = window.location.hostname
-
-  // Strip port
   const cleanHost = host.split(":")[0]
 
-  // Check if central host
-  for (const central of CENTRAL_HOSTS) {
+  // Localhost / IP always master
+  for (const central of ALWAYS_CENTRAL) {
     if (cleanHost === central) return null
   }
 
-  // Extract subdomain (first segment)
   const parts = cleanHost.split(".")
-  if (parts.length < 2) return null
+
+  // Single-segment host (e.g. acme.localhost = 2 parts, but localhost handled above)
+  // localhost subdomain form: acme.localhost → 2 parts → tenant
+  if (parts.length === 2 && parts[1] === "localhost") {
+    return parts[0]
+  }
+
+  // Production: 2 parts (e.g. admicomhub.com) = master
+  // 3+ parts (e.g. acme.admicomhub.com) = tenant
+  if (parts.length < 3) return null
 
   return parts[0]
 }
@@ -41,6 +47,8 @@ export function getApiBaseUrl(): string {
   }
 
   const port = window.location.port ? `:${window.location.port}` : ""
+  // Local dev: frontend on :3000, backend on :8000
+  // Production: Caddy on :443, same host (no port swap needed)
   const apiPort = port === ":3000" ? ":8000" : port
   return `${window.location.protocol}//${window.location.hostname.replace(/:\d+$/, "")}${apiPort}/api/v1`
 }
