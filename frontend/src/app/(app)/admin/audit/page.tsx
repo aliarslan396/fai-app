@@ -1,28 +1,31 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import {
-  Activity, AlertTriangle, Building2, ChevronLeft, ChevronRight,
-  LogIn, LogOut, Pause, Play, Plus, ShieldAlert, ShieldCheck, Trash2,
-} from "lucide-react"
+import { Activity, AlertTriangle, ChevronLeft, ChevronRight, LogIn, LogOut, ShieldAlert, ShieldCheck, UserCog, UserPlus, UserX } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/empty-state"
 import { ErrorState } from "@/components/error-state"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
 
-interface Entry {
+interface AuditEntry {
   id: number
   action: string
-  tenant_id: string | null
   ip_address: string | null
+  user_agent: string | null
   meta: Record<string, unknown> | null
   created_at: string
-  user: { id: number; name: string; email: string } | null
+  user: {
+    id: number
+    name: string
+    email: string
+  } | null
 }
 
 interface ActionInfo {
@@ -32,14 +35,23 @@ interface ActionInfo {
 }
 
 const ACTION_MAP: Record<string, ActionInfo> = {
-  "tenant.created": { label: "Tenant created", icon: Plus, color: "text-emerald-600 bg-emerald-50" },
-  "tenant.suspended": { label: "Tenant suspended", icon: Pause, color: "text-amber-600 bg-amber-50" },
-  "tenant.activated": { label: "Tenant activated", icon: Play, color: "text-emerald-600 bg-emerald-50" },
-  "tenant.deleted": { label: "Tenant deleted", icon: Trash2, color: "text-destructive bg-destructive/10" },
-  "master.login.success": { label: "Master signed in", icon: LogIn, color: "text-blue-600 bg-blue-50" },
-  "master.login.failed": { label: "Master login failed", icon: AlertTriangle, color: "text-amber-600 bg-amber-50" },
-  "master.login.locked": { label: "Master account locked", icon: ShieldAlert, color: "text-destructive bg-destructive/10" },
-  "master.logout": { label: "Master signed out", icon: LogOut, color: "text-muted-foreground bg-muted" },
+  "login.success": { label: "Signed in", icon: LogIn, color: "text-emerald-600 bg-emerald-50" },
+  "login.failed": { label: "Failed login", icon: AlertTriangle, color: "text-amber-600 bg-amber-50" },
+  "login.locked": { label: "Account locked", icon: ShieldAlert, color: "text-destructive bg-destructive/10" },
+  "logout": { label: "Signed out", icon: LogOut, color: "text-muted-foreground bg-muted" },
+  "user.created": { label: "User created", icon: UserPlus, color: "text-blue-600 bg-blue-50" },
+  "user.updated": { label: "User updated", icon: UserCog, color: "text-blue-600 bg-blue-50" },
+  "user.disabled": { label: "User disabled", icon: UserX, color: "text-amber-600 bg-amber-50" },
+  "user.enabled": { label: "User enabled", icon: ShieldCheck, color: "text-emerald-600 bg-emerald-50" },
+  "user.deleted": { label: "User deleted", icon: UserX, color: "text-destructive bg-destructive/10" },
+  "password.reset.requested": { label: "Password reset requested", icon: ShieldCheck, color: "text-blue-600 bg-blue-50" },
+  "password.reset.completed": { label: "Password reset done", icon: ShieldCheck, color: "text-emerald-600 bg-emerald-50" },
+  "mfa.enabled": { label: "MFA enabled", icon: ShieldCheck, color: "text-emerald-600 bg-emerald-50" },
+  "mfa.disabled": { label: "MFA disabled", icon: ShieldAlert, color: "text-amber-600 bg-amber-50" },
+  "mfa.verify.success": { label: "MFA verified", icon: ShieldCheck, color: "text-emerald-600 bg-emerald-50" },
+  "mfa.verify.failed": { label: "MFA failed", icon: AlertTriangle, color: "text-amber-600 bg-amber-50" },
+  "tenant.settings.updated": { label: "Settings updated", icon: UserCog, color: "text-blue-600 bg-blue-50" },
+  "tenant.logo.uploaded": { label: "Logo uploaded", icon: UserCog, color: "text-blue-600 bg-blue-50" },
 }
 
 function getActionInfo(action: string): ActionInfo {
@@ -59,30 +71,26 @@ function formatRelative(iso: string): string {
   return date.toLocaleDateString()
 }
 
-export default function MasterActivityPage() {
-  const [entries, setEntries] = useState<Entry[]>([])
+export default function AdminAuditPage() {
+  const [entries, setEntries] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
-  const [filterTenant, setFilterTenant] = useState("")
+  const [search, setSearch] = useState("")
 
   const fetchLogs = async (pageNum = 1) => {
     setLoading(true)
     setError(null)
     try {
-      const { data } = await api.get("/master/activity", {
-        params: {
-          page: pageNum,
-          tenant_id: filterTenant || undefined,
-          per_page: 25,
-        },
+      const { data } = await api.get("/audit-logs", {
+        params: { page: pageNum, action: search || undefined, per_page: 25 },
       })
       setEntries(data.data || [])
       setLastPage(data.last_page || 1)
       setPage(data.current_page || 1)
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load activity"))
+      setError(getErrorMessage(err, "Failed to load audit log"))
     } finally {
       setLoading(false)
     }
@@ -93,12 +101,15 @@ export default function MasterActivityPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const initials = (name: string) =>
+    name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase() || "?"
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Activity Log</h1>
         <p className="text-sm text-muted-foreground">
-          Platform-wide audit log across all tenants
+          Every action taken in your workspace
         </p>
       </div>
 
@@ -110,14 +121,16 @@ export default function MasterActivityPage() {
                 <Activity className="h-5 w-5" />
                 Recent activity
               </CardTitle>
-              <CardDescription>Master-level events</CardDescription>
+              <CardDescription>
+                Logins, user changes, settings updates
+              </CardDescription>
             </div>
             <Input
-              placeholder="Filter by tenant ID (e.g. acme)..."
-              value={filterTenant}
-              onChange={(e) => setFilterTenant(e.target.value)}
+              placeholder="Filter by action (e.g. login, user, mfa)..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && fetchLogs(1)}
-              className="max-w-xs font-mono text-sm"
+              className="max-w-xs"
               disabled={loading}
             />
           </div>
@@ -144,8 +157,12 @@ export default function MasterActivityPage() {
           ) : entries.length === 0 ? (
             <EmptyState
               icon={Activity}
-              title="No activity yet"
-              description="Platform events will appear here as tenants are created and managed."
+              title={search ? "No matching activity" : "No activity yet"}
+              description={
+                search
+                  ? "Try a different search term."
+                  : "Activity will appear here as users interact with the workspace."
+              }
             />
           ) : (
             <>
@@ -168,23 +185,29 @@ export default function MasterActivityPage() {
                             {formatRelative(e.created_at)}
                           </span>
                         </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          {e.tenant_id && (
-                            <span className="flex items-center gap-1 font-mono">
-                              <Building2 className="h-3 w-3" />
-                              {e.tenant_id}
+                        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                          {e.user ? (
+                            <span className="flex items-center gap-1.5">
+                              <Avatar className="h-4 w-4">
+                                <AvatarFallback className="text-[8px]">
+                                  {initials(e.user.name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              {e.user.name}
                             </span>
-                          )}
-                          {e.user && (
-                            <>
-                              <span>·</span>
-                              <span>{e.user.name}</span>
-                            </>
+                          ) : (
+                            <span>System</span>
                           )}
                           {e.ip_address && (
                             <>
                               <span>·</span>
                               <span className="font-mono">{e.ip_address}</span>
+                            </>
+                          )}
+                          {e.meta?.email && (
+                            <>
+                              <span>·</span>
+                              <span>{String(e.meta.email)}</span>
                             </>
                           )}
                         </div>

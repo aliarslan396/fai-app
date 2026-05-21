@@ -12,8 +12,10 @@ interface TenantInfo {
 }
 
 export function TrialBanner() {
-  const { context } = useAuthStore()
+  const { context, hasPermission } = useAuthStore()
   const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null)
+
+  const canUpgrade = hasPermission("tenant.billing")
 
   useEffect(() => {
     if (context !== "tenant") return
@@ -51,15 +53,19 @@ export function TrialBanner() {
               : `${days} days left in your trial`}
         </span>
         <span className="hidden text-current/70 sm:inline">
-          · Upgrade to continue using FAI after your trial ends
+          {canUpgrade
+            ? "· Upgrade to continue using FAI after your trial ends"
+            : "· Contact your admin to upgrade before the trial ends"}
         </span>
       </div>
-      <button
-        className="font-medium underline-offset-2 hover:underline"
-        onClick={() => alert("Upgrade flow coming in Phase 5")}
-      >
-        Upgrade
-      </button>
+      {canUpgrade && (
+        <button
+          className="font-medium underline-offset-2 hover:underline"
+          onClick={() => alert("Upgrade flow coming in Phase 5")}
+        >
+          Upgrade
+        </button>
+      )}
     </div>
   )
 }
