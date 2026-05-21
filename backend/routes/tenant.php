@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use App\Http\Controllers\Tenant\TenantSettingsController;
 use App\Http\Controllers\Tenant\UserController;
@@ -80,10 +81,14 @@ Route::prefix('api/v1')
                 Route::delete('logo', [TenantSettingsController::class, 'removeLogo']);
             });
 
+            // Audit log
+            Route::get('audit-logs', [AuditLogController::class, 'index']);
+
             // User management
             Route::prefix('users')->group(function () {
                 Route::get('/', [UserController::class, 'index']);
                 Route::post('/', [UserController::class, 'store']);
+                Route::post('bulk', [UserController::class, 'bulkAction']);
                 Route::get('{id}', [UserController::class, 'show']);
                 Route::patch('{id}', [UserController::class, 'update']);
                 Route::patch('{id}/disable', [UserController::class, 'disable']);

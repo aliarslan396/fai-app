@@ -84,7 +84,10 @@ class TenantRoleSeeder extends Seeder
         $roles = [
             'admin' => $permissions, // all
             'qa_manager' => array_filter($permissions, function ($p) {
-                return !in_array($p, ['users.create', 'users.disable', 'users.delete']);
+                return !in_array($p, [
+                    'users.create', 'users.disable', 'users.delete',
+                    'tenant.settings', 'tenant.billing',
+                ]);
             }),
             'qa_inspector' => [
                 'users.view',

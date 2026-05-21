@@ -6,6 +6,8 @@ use App\Models\AuditLog;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -54,6 +56,8 @@ class TenantUserService
         ]);
 
         $user->assignRole($data['role']);
+
+        $this->sendInviteEmail($user, $data['password'], $tenant);
 
         AuditLog::record('user.created', [
             'subject_type' => TenantUser::class,
@@ -151,5 +155,33 @@ class TenantUserService
         $tenant = tenant();
         if (! $tenant) return 0;
         return max(0, $tenant->user_limit - TenantUser::count());
+    }
+
+    private function sendInviteEmail(TenantUser $user, string $password, Tenant $tenant): void
+    {
+        $subdomain = $tenant->subdomain;
+        $appDomain = config('app.domain', 'localhost');
+        $isLocal = $appDomain === 'localhost';
+        $protocol = $isLocal ? 'http' : 'https';
+        $port = $isLocal ? ':3000' : '';
+        $loginUrl = "{$protocol}://{$subdomain}.{$appDomain}{$port}/login";
+
+        $body = "Hi {$user->name},\n\n";
+        $body .= "You've been invited to join {$tenant->name} on FAI.\n\n";
+        $body .= "Your login details:\n";
+        $body .= "Workspace: {$loginUrl}\n";
+        $body .= "Email: {$user->email}\n";
+        $body .= "Temporary password: {$password}\n\n";
+        $body .= "Please log in and change your password.\n\n";
+        $body .= "— The FAI team";
+
+        try {
+            Mail::raw($body, function ($m) use ($user, $tenant) {
+                $m->to($user->email)
+                    ->subject("You've been invited to {$tenant->name} on FAI");
+            });
+        } catch (\Throwable $e) {
+            Log::error('Invite email failed', ['error' => $e->getMessage(), 'user' => $user->email]);
+        }
     }
 }

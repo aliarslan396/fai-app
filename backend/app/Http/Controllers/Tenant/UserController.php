@@ -102,6 +102,45 @@ class UserController extends Controller
         return response()->json(['message' => 'User deleted']);
     }
 
+    public function bulkAction(Request $request): JsonResponse
+    {
+        $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+            'action' => 'required|in:disable,enable,delete',
+        ]);
+
+        $action = $request->input('action');
+        $ids = $request->input('ids');
+
+        $required = match ($action) {
+            'disable', 'enable' => 'users.disable',
+            'delete' => 'users.delete',
+        };
+        $this->checkPermission($required);
+
+        $users = TenantUser::whereIn('id', $ids)->get();
+        $count = 0;
+
+        foreach ($users as $user) {
+            try {
+                match ($action) {
+                    'disable' => $this->userService->disable($user),
+                    'enable' => $this->userService->enable($user),
+                    'delete' => $this->userService->delete($user),
+                };
+                $count++;
+            } catch (\Throwable $e) {
+                // Skip failed
+            }
+        }
+
+        return response()->json([
+            'message' => "{$count} users {$action}d",
+            'processed' => $count,
+        ]);
+    }
+
     private function checkPermission(string $permission): void
     {
         $user = request()->user();
