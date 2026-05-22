@@ -71,7 +71,7 @@ class TenantSettingsController extends Controller
         $this->checkAccess();
 
         Validator::make($request->all(), [
-            'logo' => 'required|image|mimes:png,jpg,jpeg,svg,webp|max:2048',
+            'logo' => 'required|image|mimes:png,jpg,jpeg,webp|max:2048',
         ])->validate();
 
         $t = tenant();

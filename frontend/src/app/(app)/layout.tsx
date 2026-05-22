@@ -44,7 +44,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     // Initial check on mount + interval
     check()
-    const interval = setInterval(check, 10_000)
+    const interval = setInterval(check, 60_000)
 
     // Also check on tab focus (user comes back to tab)
     const onFocus = () => check()

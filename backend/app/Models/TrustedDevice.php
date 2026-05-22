@@ -23,7 +23,7 @@ class TrustedDevice extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(TenantUser::class);
     }
 
     public function isExpired(): bool

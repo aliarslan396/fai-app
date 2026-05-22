@@ -32,8 +32,8 @@ const tenantNav = [
 ]
 
 const tenantAdminNav = [
-  { label: "Users", href: "/admin/users", icon: Users, permission: "users.create" },
-  { label: "Activity Log", href: "/admin/audit", icon: Activity, permission: "users.create" },
+  { label: "Users", href: "/admin/users", icon: Users, permission: "users.view" },
+  { label: "Activity Log", href: "/admin/audit", icon: Activity, permission: "users.view" },
   { label: "Settings", href: "/admin/settings", icon: Settings, permission: "tenant.settings" },
 ]
 

@@ -96,7 +96,9 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true })
         try {
           const { default: api } = await import("./api")
-          const { data } = await api.get("/auth/me").catch(() => api.get("/master/auth/me"))
+          const ctx = get().context
+          const endpoint = ctx === "master" ? "/master/auth/me" : "/auth/me"
+          const { data } = await api.get(endpoint)
           set({
             user: data.user,
             context: data.context,

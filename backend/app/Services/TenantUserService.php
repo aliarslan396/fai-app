@@ -80,6 +80,7 @@ class TenantUserService
         ])->validate();
 
         $oldValues = $user->only(['name', 'email', 'phone', 'status']);
+        $oldRole = $user->roles->pluck('name')->first();
 
         $user->fill(array_filter([
             'name' => $data['name'] ?? null,
@@ -94,15 +95,21 @@ class TenantUserService
 
         $user->save();
 
-        if (isset($data['role'])) {
+        if (isset($data['role']) && $data['role'] !== $oldRole) {
             $user->syncRoles([$data['role']]);
+            $oldValues['role'] = $oldRole;
+        }
+
+        $newValues = $user->only(['name', 'email', 'phone', 'status']);
+        if (isset($data['role']) && $data['role'] !== $oldRole) {
+            $newValues['role'] = $data['role'];
         }
 
         AuditLog::record('user.updated', [
             'subject_type' => TenantUser::class,
             'subject_id' => $user->id,
             'old_values' => $oldValues,
-            'new_values' => $user->only(['name', 'email', 'phone', 'status']),
+            'new_values' => $newValues,
         ]);
 
         return $user->load('roles', 'permissions');

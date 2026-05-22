@@ -95,12 +95,27 @@ class TenantController extends Controller
 
         $tenant = Tenant::findOrFail($id);
 
-        $tenant->update($request->only([
-            'name',
-            'logo_url',
-            'primary_color',
-            'user_limit',
-        ]));
+        $data = $request->validate([
+            'name' => 'sometimes|string|min:2|max:100',
+            'logo_url' => 'sometimes|nullable|string|max:500',
+            'primary_color' => 'sometimes|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            'user_limit' => 'sometimes|integer|min:1|max:10000',
+        ]);
+
+        $before = $tenant->only(array_keys($data));
+        $tenant->update($data);
+        $after = $tenant->only(array_keys($data));
+
+        $changed = collect($after)->filter(fn ($v, $k) => $v != ($before[$k] ?? null))->keys()->all();
+
+        if (! empty($changed)) {
+            CentralAuditLog::record('tenant.updated', [
+                'tenant_id' => $tenant->id,
+                'old_values' => array_intersect_key($before, array_flip($changed)),
+                'new_values' => array_intersect_key($after, array_flip($changed)),
+                'meta' => ['fields' => $changed],
+            ]);
+        }
 
         return response()->json(['tenant' => $tenant]);
     }

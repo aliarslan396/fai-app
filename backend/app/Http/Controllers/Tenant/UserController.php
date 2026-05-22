@@ -121,6 +121,7 @@ class UserController extends Controller
 
         $users = TenantUser::whereIn('id', $ids)->get();
         $count = 0;
+        $failed = [];
 
         foreach ($users as $user) {
             try {
@@ -131,13 +132,19 @@ class UserController extends Controller
                 };
                 $count++;
             } catch (\Throwable $e) {
-                // Skip failed
+                $failed[] = ['id' => $user->id, 'email' => $user->email, 'error' => $e->getMessage()];
             }
         }
 
+        $message = "{$count} users {$action}d";
+        if (! empty($failed)) {
+            $message .= ', ' . count($failed) . ' failed';
+        }
+
         return response()->json([
-            'message' => "{$count} users {$action}d",
+            'message' => $message,
             'processed' => $count,
+            'failed' => $failed,
         ]);
     }
 

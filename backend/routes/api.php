@@ -22,20 +22,20 @@ Route::prefix('v1')->group(function () {
     Route::get('ping', fn () => ['status' => 'ok', 'service' => 'fai-master-api']);
 
     // Tenant signup (public — companies sign up)
-    Route::post('signup', [TenantOnboardingController::class, 'signup']);
+    Route::middleware('throttle:5,60')->post('signup', [TenantOnboardingController::class, 'signup']);
 
     // Master super admin auth
     Route::prefix('master/auth')->group(function () {
-        Route::post('login', [AuthController::class, 'login']);
+        Route::middleware('throttle:10,1')->post('login', [AuthController::class, 'login']);
 
-        Route::middleware('auth:sanctum')->group(function () {
+        Route::middleware(['auth:sanctum', 'master.user'])->group(function () {
             Route::post('logout', [AuthController::class, 'logout']);
             Route::get('me', [AuthController::class, 'me']);
         });
     });
 
     // Master super admin protected routes
-    Route::middleware(['auth:sanctum'])->prefix('master')->group(function () {
+    Route::middleware(['auth:sanctum', 'master.user'])->prefix('master')->group(function () {
         Route::get('tenants', [TenantController::class, 'index']);
         Route::post('tenants', [TenantController::class, 'store']);
         Route::get('tenants/{id}', [TenantController::class, 'show']);

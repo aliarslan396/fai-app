@@ -53,16 +53,16 @@ Route::prefix('api/v1')
 
         // Public auth endpoints
         Route::prefix('auth')->group(function () {
-            Route::post('login', [TenantAuthController::class, 'login']);
-            Route::post('forgot-password', [TenantAuthController::class, 'forgotPassword']);
-            Route::post('reset-password', [TenantAuthController::class, 'resetPassword']);
+            Route::middleware('throttle:10,1')->post('login', [TenantAuthController::class, 'login']);
+            Route::middleware('throttle:5,60')->post('forgot-password', [TenantAuthController::class, 'forgotPassword']);
+            Route::middleware('throttle:5,60')->post('reset-password', [TenantAuthController::class, 'resetPassword']);
         });
 
         // MFA verification — requires challenge token (Sanctum token with mfa-pending ability)
-        Route::middleware('auth:sanctum')->post('auth/verify-mfa', [TenantAuthController::class, 'verifyMfa']);
+        Route::middleware(['auth:sanctum', 'tenant.user'])->post('auth/verify-mfa', [TenantAuthController::class, 'verifyMfa']);
 
         // Protected
-        Route::middleware('auth:sanctum')->group(function () {
+        Route::middleware(['auth:sanctum', 'tenant.user'])->group(function () {
             Route::prefix('auth')->group(function () {
                 Route::post('logout', [TenantAuthController::class, 'logout']);
                 Route::get('me', [TenantAuthController::class, 'me']);
