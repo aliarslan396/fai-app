@@ -204,10 +204,10 @@ export default function AdminAuditPage() {
                               <span className="font-mono">{e.ip_address}</span>
                             </>
                           )}
-                          {e.meta?.email && (
+                          {typeof e.meta?.email === "string" && (
                             <>
                               <span>·</span>
-                              <span>{String(e.meta.email)}</span>
+                              <span>{e.meta.email}</span>
                             </>
                           )}
                         </div>
