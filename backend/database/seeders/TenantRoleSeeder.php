@@ -29,6 +29,18 @@ class TenantRoleSeeder extends Seeder
             'parts.edit',
             'parts.delete',
 
+            // Customers (master data)
+            'customers.view',
+            'customers.create',
+            'customers.edit',
+            'customers.delete',
+
+            // Suppliers (master data)
+            'suppliers.view',
+            'suppliers.create',
+            'suppliers.edit',
+            'suppliers.delete',
+
             // Inspection plans
             'plans.view',
             'plans.create',
@@ -92,6 +104,8 @@ class TenantRoleSeeder extends Seeder
             'qa_inspector' => [
                 'users.view',
                 'parts.view', 'parts.create', 'parts.edit',
+                'customers.view', 'customers.create', 'customers.edit',
+                'suppliers.view', 'suppliers.create', 'suppliers.edit',
                 'plans.view', 'plans.create', 'plans.edit',
                 'drawings.view', 'drawings.upload', 'drawings.bubble.create', 'drawings.bubble.edit', 'drawings.bubble.delete',
                 'inspections.view', 'inspections.create', 'inspections.edit', 'inspections.sign', 'inspections.export',
@@ -101,6 +115,8 @@ class TenantRoleSeeder extends Seeder
             ],
             'shop_floor' => [
                 'parts.view',
+                'customers.view',
+                'suppliers.view',
                 'plans.view',
                 'drawings.view',
                 'inspections.view', 'inspections.edit',
@@ -108,6 +124,8 @@ class TenantRoleSeeder extends Seeder
             ],
             'viewer' => [
                 'parts.view',
+                'customers.view',
+                'suppliers.view',
                 'plans.view',
                 'drawings.view',
                 'inspections.view',

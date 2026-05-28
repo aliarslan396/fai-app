@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\AuditLogController;
+use App\Http\Controllers\Tenant\CustomerController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use App\Http\Controllers\Tenant\TenantSettingsController;
 use App\Http\Controllers\Tenant\UserController;
@@ -94,6 +95,16 @@ Route::prefix('api/v1')
                 Route::patch('{id}/disable', [UserController::class, 'disable']);
                 Route::patch('{id}/enable', [UserController::class, 'enable']);
                 Route::delete('{id}', [UserController::class, 'destroy']);
+            });
+
+            // Customers
+            Route::prefix('customers')->group(function () {
+                Route::get('/', [CustomerController::class, 'index']);
+                Route::post('/', [CustomerController::class, 'store']);
+                Route::post('bulk', [CustomerController::class, 'bulkAction']);
+                Route::get('{id}', [CustomerController::class, 'show']);
+                Route::patch('{id}', [CustomerController::class, 'update']);
+                Route::delete('{id}', [CustomerController::class, 'destroy']);
             });
         });
     });
