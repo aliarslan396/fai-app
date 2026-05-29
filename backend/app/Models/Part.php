@@ -1,0 +1,45 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+/**
+ * Part master — lives in tenant DB.
+ * Stub for Phase 2a customer linkage. Full module in next sprint.
+ */
+class Part extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    protected $fillable = [
+        'part_number',
+        'revision',
+        'description',
+        'customer_id',
+        'material',
+        'process',
+        'weight',
+        'weight_unit',
+        'classification',
+        'status',
+        'notes',
+        'created_by',
+    ];
+
+    protected $casts = [
+        'weight' => 'decimal:4',
+    ];
+
+    public function customer()
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(TenantUser::class, 'created_by');
+    }
+}
