@@ -40,29 +40,45 @@ jobs:
             COMPOSE="docker compose -f docker-compose.prod.yml"
 
             echo "==> Backend: composer install"
-            $COMPOSE exec -T backend composer install --no-dev --optimize-autoloader --no-interaction || true
+            $COMPOSE exec -T backend composer install --no-dev --optimize-autoloader --no-interaction
 
             echo "==> Backend: migrate central"
             $COMPOSE exec -T backend php artisan migrate --force
 
-            echo "==> Backend: migrate + seed tenants"
-            $COMPOSE exec -T backend php artisan tenants:migrate --force || true
-            $COMPOSE exec -T backend php artisan tenants:seed --class=TenantRoleSeeder --force || true
+            echo "==> Backend: migrate tenants"
+            $COMPOSE exec -T backend php artisan tenants:migrate --force
+
+            echo "==> Backend: seed tenant roles"
+            $COMPOSE exec -T backend php artisan tenants:seed --class=TenantRoleSeeder --force
 
             echo "==> Backend: cache"
             $COMPOSE exec -T backend php artisan optimize:clear
             $COMPOSE exec -T backend php artisan route:cache
             $COMPOSE exec -T backend php artisan config:cache
 
-            echo "==> Frontend: build"
+            echo "==> Frontend: install deps"
             $COMPOSE exec -T frontend npm ci --include=dev
+
+            echo "==> Frontend: build"
             $COMPOSE exec -T frontend npm run build
 
             echo "==> Restart services"
             $COMPOSE restart frontend backend queue
 
-            echo "==> Verify"
+            echo "==> Wait for containers to settle"
+            sleep 8
+
+            echo "==> Verify containers up"
             $COMPOSE ps
+
+            echo "==> Smoke test backend"
+            BACKEND_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: admicomhub.com" http://localhost/api/v1/ping || echo "000")
+            echo "backend ping: $BACKEND_HTTP"
+            if [ "$BACKEND_HTTP" != "200" ] && [ "$BACKEND_HTTP" != "301" ] && [ "$BACKEND_HTTP" != "302" ]; then
+              echo "Backend smoke test FAILED (got $BACKEND_HTTP)"
+              exit 1
+            fi
+
             echo "==> Deploy complete"
           ENDSSH
 
