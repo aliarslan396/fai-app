@@ -31,6 +31,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key $DEPLOY_USER@$DEPLOY_HOST bash -s <<'ENDSSH'
             set -euo pipefail
+            exec < /dev/null
             cd "${DEPLOY_PATH:-/opt/fai-app}"
 
             echo "==> Pulling latest"
