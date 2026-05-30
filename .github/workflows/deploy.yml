@@ -72,7 +72,7 @@ jobs:
           $COMPOSE ps
 
           echo "==> Smoke test backend"
-          BACKEND_HTTP=$(curl -sk -o /dev/null -w "%{http_code}" -L -H "Host: admicomhub.com" https://localhost/api/v1/ping || echo "000")
+          BACKEND_HTTP=$(curl -s -o /dev/null -w "%{http_code}" https://admicomhub.com/api/v1/ping || echo "000")
           echo "backend ping: $BACKEND_HTTP"
           if [ "$BACKEND_HTTP" != "200" ]; then
             echo "Backend smoke test FAILED (got $BACKEND_HTTP)"
