@@ -39,6 +39,14 @@ jobs:
 
           COMPOSE="docker compose -f docker-compose.prod.yml"
 
+          echo "==> Detect Dockerfile changes"
+          if git diff --name-only HEAD@{1} HEAD 2>/dev/null | grep -qE '^(docker/|.*Dockerfile)'; then
+            echo "==> Dockerfile changed — rebuilding backend + queue images"
+            $COMPOSE build backend queue
+            $COMPOSE up -d backend queue
+            sleep 5
+          fi
+
           echo "==> Backend: composer install"
           $COMPOSE exec -T backend composer install --no-dev --optimize-autoloader --no-interaction </dev/null
 
