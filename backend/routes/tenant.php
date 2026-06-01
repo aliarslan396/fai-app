@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\CustomerController;
+use App\Http\Controllers\Tenant\DrawingController;
+use App\Http\Controllers\Tenant\PartController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use App\Http\Controllers\Tenant\TenantSettingsController;
 use App\Http\Controllers\Tenant\UserController;
@@ -105,6 +107,26 @@ Route::prefix('api/v1')
                 Route::get('{id}', [CustomerController::class, 'show']);
                 Route::patch('{id}', [CustomerController::class, 'update']);
                 Route::delete('{id}', [CustomerController::class, 'destroy']);
+            });
+
+            // Parts (minimal CRUD for Week 5 — full module in Week 9)
+            Route::prefix('parts')->group(function () {
+                Route::get('/', [PartController::class, 'index']);
+                Route::post('/', [PartController::class, 'store']);
+                Route::get('{id}', [PartController::class, 'show']);
+                Route::patch('{id}', [PartController::class, 'update']);
+                Route::delete('{id}', [PartController::class, 'destroy']);
+            });
+
+            // Drawings — upload + view + delete
+            Route::prefix('drawings')->group(function () {
+                Route::get('/', [DrawingController::class, 'index']);
+                Route::post('/', [DrawingController::class, 'store']);
+                Route::get('{id}', [DrawingController::class, 'show']);
+                Route::delete('{id}', [DrawingController::class, 'destroy']);
+                Route::get('{id}/download', [DrawingController::class, 'download']);
+                Route::get('{id}/pages/{page}/image', [DrawingController::class, 'pageImage']);
+                Route::get('{id}/pages/{page}/thumbnail', [DrawingController::class, 'pageThumbnail']);
             });
         });
     });

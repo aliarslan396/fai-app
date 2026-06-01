@@ -42,4 +42,9 @@ class Part extends Model
     {
         return $this->belongsTo(TenantUser::class, 'created_by');
     }
+
+    public function drawings()
+    {
+        return $this->hasMany(Drawing::class);
+    }
 }

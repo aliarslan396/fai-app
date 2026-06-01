@@ -16,6 +16,9 @@ RUN apk add --no-cache \
     g++ \
     make \
     linux-headers \
+    poppler-utils \
+    imagemagick \
+    ghostscript \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
         pdo \
