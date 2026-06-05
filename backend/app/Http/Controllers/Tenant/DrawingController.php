@@ -183,6 +183,26 @@ class DrawingController extends Controller
     }
 
     /**
+     * Return OCR results for a single page (text blocks + bboxes).
+     */
+    public function pageOcr(int $id, int $page): JsonResponse
+    {
+        $this->checkPermission('drawings.view');
+
+        $pageRow = DrawingPage::where('drawing_id', $id)
+            ->where('page_number', $page)
+            ->firstOrFail();
+
+        return response()->json([
+            'page_id' => $pageRow->id,
+            'width' => $pageRow->width,
+            'height' => $pageRow->height,
+            'ocr_completed_at' => $pageRow->ocr_completed_at,
+            'ocr' => $pageRow->ocr_text,
+        ]);
+    }
+
+    /**
      * Download the original uploaded file.
      */
     public function download(int $id): BinaryFileResponse

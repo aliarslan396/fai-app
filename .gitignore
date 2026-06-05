@@ -20,3 +20,5 @@ frontend/.env.local
 .idea/
 .vscode/
 test-drawings/
+ocr/__pycache__/
+ocr/.venv/

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\RunOcrOnDrawingPage;
 use App\Models\Drawing;
 use App\Models\DrawingPage;
 use Illuminate\Support\Facades\Log;
@@ -43,6 +44,14 @@ class DrawingProcessor
                 'processed_at' => now(),
                 'page_count' => $drawing->pages()->count(),
             ]);
+
+            // Queue OCR for every page (tenant-scoped, async)
+            $tenantId = tenant()?->getTenantKey();
+            if ($tenantId) {
+                $drawing->pages()->get()->each(function ($page) use ($tenantId) {
+                    RunOcrOnDrawingPage::dispatch($tenantId, $page->id);
+                });
+            }
         } catch (\Throwable $e) {
             Log::error('Drawing processing failed', [
                 'drawing_id' => $drawing->id,

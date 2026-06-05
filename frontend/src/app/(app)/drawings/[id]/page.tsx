@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Download, Loader2, ZoomIn, ZoomOut, Maximize2, Minimize2,
+  Eye, EyeOff,
 } from "lucide-react"
 
 import { Card } from "@/components/ui/card"
@@ -37,6 +38,13 @@ interface DrawingPage {
   thumbnail_path: string
   width: number
   height: number
+  ocr_completed_at: string | null
+}
+
+interface OcrBlock {
+  text: string
+  bbox: [number, number, number, number] // x, y, w, h in image-space pixels
+  confidence: number
 }
 
 interface DrawingDetail {
@@ -75,6 +83,9 @@ export default function DrawingViewerPage() {
   const viewportRef = useRef<HTMLDivElement>(null)
   const [viewportWidth, setViewportWidth] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
+  const [showOcr, setShowOcr] = useState(false)
+  const [ocrBlocks, setOcrBlocks] = useState<OcrBlock[]>([])
+  const [ocrLoading, setOcrLoading] = useState(false)
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -120,7 +131,21 @@ export default function DrawingViewerPage() {
 
   useEffect(() => {
     setImageLoading(true)
+    setOcrBlocks([])
   }, [currentPage])
+
+  useEffect(() => {
+    if (!showOcr || !drawing || ocrBlocks.length > 0) return
+    setOcrLoading(true)
+    api
+      .get(`/drawings/${drawing.id}/pages/${currentPage}/ocr`)
+      .then((res) => {
+        const blocks = res.data?.ocr?.blocks ?? []
+        setOcrBlocks(blocks)
+      })
+      .catch(() => setOcrBlocks([]))
+      .finally(() => setOcrLoading(false))
+  }, [showOcr, currentPage, drawing, ocrBlocks.length])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -271,6 +296,22 @@ export default function DrawingViewerPage() {
                 <ZoomIn className="h-4 w-4" />
               </Button>
               <Button
+                variant={showOcr ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-2 text-xs"
+                onClick={() => setShowOcr((v) => !v)}
+                title="Toggle OCR overlay"
+              >
+                {ocrLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : showOcr ? (
+                  <EyeOff className="mr-1 h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="mr-1 h-3.5 w-3.5" />
+                )}
+                OCR
+              </Button>
+              <Button
                 variant="ghost"
                 size="sm"
                 className="h-8 px-2 text-xs"
@@ -303,30 +344,47 @@ export default function DrawingViewerPage() {
             )}
             {page && viewportWidth > 0 ? (
               (() => {
-                // Display width = viewport width * zoom (zoom=1 means fit-to-width)
                 const displayWidth = viewportWidth * zoom
                 const aspectRatio = page.height / page.width
                 const displayHeight = displayWidth * aspectRatio
-                // Anchor image to left when zoomed in so horizontal scroll exposes
-                // the full right edge instead of clipping both sides.
                 const justifyClass = zoom > 1 ? "justify-start" : "justify-center"
+                const scale = displayWidth / page.width
                 return (
                   <div className={`flex min-h-full items-start p-4 ${justifyClass}`}>
-                    <AuthImage
-                      key={page.id}
-                      src={`/drawings/${drawing.id}/pages/${currentPage}/image`}
-                      alt={`Page ${currentPage}`}
-                      className="bg-white shadow-md shrink-0"
-                      style={{
-                        width: `${displayWidth}px`,
-                        height: `${displayHeight}px`,
-                        maxWidth: "none",
-                        maxHeight: "none",
-                        imageRendering: zoom > 2 ? "pixelated" : "auto",
-                      }}
-                      onLoad={() => setImageLoading(false)}
-                      onError={() => setImageLoading(false)}
-                    />
+                    <div
+                      className="relative shrink-0"
+                      style={{ width: `${displayWidth}px`, height: `${displayHeight}px` }}
+                    >
+                      <AuthImage
+                        key={page.id}
+                        src={`/drawings/${drawing.id}/pages/${currentPage}/image`}
+                        alt={`Page ${currentPage}`}
+                        className="absolute inset-0 bg-white shadow-md"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          maxWidth: "none",
+                          maxHeight: "none",
+                          imageRendering: zoom > 2 ? "pixelated" : "auto",
+                        }}
+                        onLoad={() => setImageLoading(false)}
+                        onError={() => setImageLoading(false)}
+                      />
+                      {showOcr &&
+                        ocrBlocks.map((b, i) => (
+                          <div
+                            key={i}
+                            className="pointer-events-none absolute border border-emerald-500 bg-emerald-500/10"
+                            style={{
+                              left: `${b.bbox[0] * scale}px`,
+                              top: `${b.bbox[1] * scale}px`,
+                              width: `${b.bbox[2] * scale}px`,
+                              height: `${b.bbox[3] * scale}px`,
+                            }}
+                            title={`${b.text} (${(b.confidence * 100).toFixed(0)}%)`}
+                          />
+                        ))}
+                    </div>
                   </div>
                 )
               })()

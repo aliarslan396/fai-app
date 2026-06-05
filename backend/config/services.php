@@ -31,4 +31,8 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'ocr' => [
+        'url' => env('OCR_SERVICE_URL', 'http://ocr:8001'),
+    ],
+
 ];
