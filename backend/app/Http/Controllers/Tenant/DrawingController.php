@@ -60,9 +60,11 @@ class DrawingController extends Controller
 
         $data = $request->validate([
             'part_id' => 'required|integer|exists:parts,id',
+            'plan_id' => 'nullable|integer|exists:inspection_plans,id',
             'file' => 'required|file|mimes:pdf,jpg,jpeg,png,tiff,tif|max:51200', // 50MB
             'drawing_number' => 'nullable|string|max:100',
             'revision' => 'nullable|string|max:20',
+            'document_label' => 'nullable|string|max:100',
         ]);
 
         $file = $request->file('file');
@@ -71,9 +73,18 @@ class DrawingController extends Controller
         $tenantKey = tenant()?->getTenantKey() ?? 'default';
         $storedPath = $file->store("drawings/{$tenantKey}/_uploads", 'local');
 
+        // Determine sort_order — last in plan if plan_id provided
+        $sortOrder = 0;
+        if (! empty($data['plan_id'])) {
+            $sortOrder = (int) Drawing::where('plan_id', $data['plan_id'])->max('sort_order') + 1;
+        }
+
         $drawing = Drawing::create([
             'part_id' => $part->id,
+            'plan_id' => $data['plan_id'] ?? null,
             'original_filename' => $file->getClientOriginalName(),
+            'document_label' => $data['document_label'] ?? null,
+            'sort_order' => $sortOrder,
             'file_path' => $storedPath,
             'mime_type' => $file->getClientMimeType(),
             'file_size' => $file->getSize(),

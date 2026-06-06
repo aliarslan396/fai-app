@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\AuditLogController;
+use App\Http\Controllers\Tenant\BalloonController;
+use App\Http\Controllers\Tenant\CharacteristicController;
 use App\Http\Controllers\Tenant\CustomerController;
 use App\Http\Controllers\Tenant\DrawingController;
+use App\Http\Controllers\Tenant\InspectionPlanController;
 use App\Http\Controllers\Tenant\PartController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use App\Http\Controllers\Tenant\TenantSettingsController;
@@ -117,6 +120,28 @@ Route::prefix('api/v1')
                 Route::patch('{id}', [PartController::class, 'update']);
                 Route::delete('{id}', [PartController::class, 'destroy']);
             });
+
+            // Inspection Plans (per doc Module 3.2 / 4.2)
+            Route::prefix('plans')->group(function () {
+                Route::get('/', [InspectionPlanController::class, 'index']);
+                Route::post('/', [InspectionPlanController::class, 'store']);
+                Route::get('{id}', [InspectionPlanController::class, 'show']);
+                Route::patch('{id}', [InspectionPlanController::class, 'update']);
+                Route::delete('{id}', [InspectionPlanController::class, 'destroy']);
+
+                // Balloons under a plan
+                Route::get('{id}/balloons', [BalloonController::class, 'index']);
+                Route::post('{id}/balloons', [BalloonController::class, 'store']);
+                Route::patch('{id}/balloons/{balloon_id}', [BalloonController::class, 'update']);
+                Route::delete('{id}/balloons/{balloon_id}', [BalloonController::class, 'destroy']);
+                Route::post('{id}/renumber', [BalloonController::class, 'renumberAll']);
+
+                // Characteristic saved per balloon
+                Route::post('{id}/balloons/{balloon_id}/characteristic', [CharacteristicController::class, 'save']);
+            });
+
+            // Live requirement-string preview (not tied to a plan)
+            Route::post('plans/preview', [CharacteristicController::class, 'preview']);
 
             // Drawings — upload + view + delete
             Route::prefix('drawings')->group(function () {

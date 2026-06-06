@@ -18,11 +18,14 @@ class Part extends Model
         'part_number',
         'revision',
         'description',
+        'part_type',
         'customer_id',
         'material',
+        'material_spec',
         'process',
         'weight',
         'weight_unit',
+        'uom',
         'classification',
         'status',
         'notes',
@@ -46,5 +49,10 @@ class Part extends Model
     public function drawings()
     {
         return $this->hasMany(Drawing::class);
+    }
+
+    public function inspectionPlans()
+    {
+        return $this->hasMany(InspectionPlan::class);
     }
 }

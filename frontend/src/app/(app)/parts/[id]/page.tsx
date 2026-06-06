@@ -6,11 +6,13 @@ import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   ArrowLeft, Pencil, Upload, FileText, Trash2, Loader2, Download, AlertTriangle,
+  ClipboardList, Plus,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EmptyState } from "@/components/empty-state"
 import { ErrorState } from "@/components/error-state"
 import {
@@ -24,6 +26,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { PartFormDialog, type Part } from "@/components/part-form-dialog"
+import { PlanFormDialog, type InspectionPlan } from "@/components/plan-form-dialog"
 import { AuthImage } from "@/components/auth-image"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
@@ -65,10 +68,12 @@ export default function PartDetailPage() {
 
   const [part, setPart] = useState<Part | null>(null)
   const [drawings, setDrawings] = useState<Drawing[]>([])
+  const [plans, setPlans] = useState<InspectionPlan[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [editOpen, setEditOpen] = useState(false)
+  const [planFormOpen, setPlanFormOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Drawing | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -77,17 +82,21 @@ export default function PartDetailPage() {
   const canEdit = hasPermission("parts.edit")
   const canUpload = hasPermission("drawings.upload")
   const canDelete = hasPermission("drawings.delete")
+  const canCreatePlan = hasPermission("plans.create")
+  const canViewPlan = hasPermission("plans.view")
 
   const fetchPart = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [partRes, drawingRes] = await Promise.all([
+      const [partRes, drawingRes, planRes] = await Promise.all([
         api.get(`/parts/${params.id}`),
         api.get("/drawings", { params: { part_id: params.id, per_page: 100 } }),
+        api.get("/plans", { params: { part_id: params.id, per_page: 50 } }).catch(() => ({ data: { data: [] } })),
       ])
       setPart(partRes.data.part)
       setDrawings(drawingRes.data.data || [])
+      setPlans(planRes.data.data || [])
     } catch (err) {
       setError(getErrorMessage(err, "Failed to load part"))
     } finally {
@@ -198,6 +207,65 @@ export default function PartDetailPage() {
         </div>
       </div>
 
+      <Tabs defaultValue="plans">
+        <TabsList>
+          {canViewPlan && (
+            <TabsTrigger value="plans">
+              <ClipboardList className="mr-2 h-4 w-4" />
+              Inspection Plans ({plans.length})
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="drawings">
+            <FileText className="mr-2 h-4 w-4" />
+            Drawings ({drawings.length})
+          </TabsTrigger>
+        </TabsList>
+
+        {canViewPlan && (
+          <TabsContent value="plans">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">Inspection Plans</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Bubble prints with characteristics — reused across all inspections of this part
+                    </p>
+                  </div>
+                  {canCreatePlan && (
+                    <Button onClick={() => setPlanFormOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      New plan
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {plans.length === 0 ? (
+                  <EmptyState
+                    icon={ClipboardList}
+                    title="No inspection plans yet"
+                    description="Create a plan to start placing balloons + capturing dimensions."
+                    action={
+                      canCreatePlan
+                        ? { label: "New plan", onClick: () => setPlanFormOpen(true), icon: Plus }
+                        : undefined
+                    }
+                  />
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                    {plans.map((p) => (
+                      <PlanCard key={p.id} plan={p} />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        <TabsContent value="drawings">
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -267,10 +335,20 @@ export default function PartDetailPage() {
         </CardContent>
       </Card>
 
+        </TabsContent>
+      </Tabs>
+
       <PartFormDialog
         open={editOpen}
         onOpenChange={setEditOpen}
         part={part}
+        onSaved={fetchPart}
+      />
+
+      <PlanFormDialog
+        open={planFormOpen}
+        onOpenChange={setPlanFormOpen}
+        partId={part.id}
         onSaved={fetchPart}
       />
 
@@ -394,5 +472,39 @@ function DrawingCard({
         )}
       </div>
     </div>
+  )
+}
+
+const planStatusVariant: Record<string, "default" | "secondary" | "outline"> = {
+  draft: "outline",
+  active: "default",
+  superseded: "secondary",
+}
+
+function PlanCard({ plan }: { plan: InspectionPlan }) {
+  const balloons = plan.balloons_count ?? plan.balloon_count ?? 0
+  const chars = plan.characteristics_count ?? plan.characteristic_count ?? 0
+  const docs = plan.documents_count ?? 0
+
+  return (
+    <Link
+      href={`/plans/${plan.id}/workspace`}
+      className="group flex flex-col gap-2 rounded-lg border bg-card p-4 transition-shadow hover:shadow-md"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="font-mono text-sm font-semibold">{plan.plan_number}</span>
+        <Badge variant={planStatusVariant[plan.status] || "outline"}>{plan.status}</Badge>
+      </div>
+      <p className="line-clamp-2 text-sm" title={plan.plan_name}>
+        {plan.plan_name}
+      </p>
+      <div className="mt-auto flex items-center gap-3 text-xs text-muted-foreground">
+        <span>{docs} doc{docs === 1 ? "" : "s"}</span>
+        <span>·</span>
+        <span>{balloons} balloon{balloons === 1 ? "" : "s"}</span>
+        <span>·</span>
+        <span>{chars} char{chars === 1 ? "" : "s"}</span>
+      </div>
+    </Link>
   )
 }

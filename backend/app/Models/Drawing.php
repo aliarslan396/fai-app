@@ -12,7 +12,10 @@ class Drawing extends Model
 
     protected $fillable = [
         'part_id',
+        'plan_id',
         'original_filename',
+        'document_label',
+        'sort_order',
         'file_path',
         'mime_type',
         'file_size',
@@ -36,9 +39,19 @@ class Drawing extends Model
         return $this->belongsTo(Part::class);
     }
 
+    public function plan()
+    {
+        return $this->belongsTo(InspectionPlan::class, 'plan_id');
+    }
+
     public function pages()
     {
         return $this->hasMany(DrawingPage::class)->orderBy('page_number');
+    }
+
+    public function balloons()
+    {
+        return $this->hasMany(DrawingBalloon::class, 'fai_document_id');
     }
 
     public function uploader()
