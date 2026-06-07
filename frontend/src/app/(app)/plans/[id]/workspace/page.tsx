@@ -10,6 +10,16 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { ErrorState } from "@/components/error-state"
 import { PdfPageCanvas } from "@/components/pdf-page-canvas"
 import { AuthImage } from "@/components/auth-image"
@@ -77,6 +87,9 @@ export default function PlanWorkspacePage() {
   const [selectedBalloon, setSelectedBalloon] = useState<Balloon | null>(null)
   const [uploading, setUploading] = useState(false)
   const [renumbering, setRenumbering] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
+  const [renumberConfirmOpen, setRenumberConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
 
@@ -209,23 +222,35 @@ export default function PlanWorkspacePage() {
     }
   }
 
-  const handleDeleteBalloon = async (balloonId: number) => {
-    if (!plan) return
-    if (!confirm("Delete this balloon? Remaining balloons will renumber.")) return
+  const handleDeleteBalloon = (balloonId: number) => {
+    setDeleteTargetId(balloonId)
+  }
+
+  const confirmDeleteBalloon = async () => {
+    if (!plan || deleteTargetId == null) return
+    setDeleting(true)
     try {
-      await api.delete(`/plans/${plan.id}/balloons/${balloonId}`)
+      await api.delete(`/plans/${plan.id}/balloons/${deleteTargetId}`)
       toast.success("Balloon deleted")
       setSelectedBalloon(null)
+      setDeleteTargetId(null)
       fetchPlan()
     } catch (err) {
       toast.error(getErrorMessage(err, "Failed to delete"))
+    } finally {
+      setDeleting(false)
     }
   }
 
-  const handleRenumber = async () => {
+  const handleRenumber = () => {
     if (!plan) return
-    if (!confirm("Renumber all balloons by document → page → top-to-bottom?")) return
+    setRenumberConfirmOpen(true)
+  }
+
+  const confirmRenumber = async () => {
+    if (!plan) return
     setRenumbering(true)
+    setRenumberConfirmOpen(false)
     try {
       await api.post(`/plans/${plan.id}/renumber`)
       toast.success("Renumbered")
@@ -528,6 +553,52 @@ export default function PlanWorkspacePage() {
           )}
         </aside>
       </div>
+
+      <AlertDialog open={deleteTargetId != null} onOpenChange={(open) => !open && setDeleteTargetId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this balloon?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remaining balloons will renumber automatically.
+              {(() => {
+                const target = balloons.find((b) => b.id === deleteTargetId)
+                return target ? ` Bubble #${target.balloon_number} will be removed.` : ""
+              })()}
+              {" "}
+              This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteBalloon}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={renumberConfirmOpen} onOpenChange={setRenumberConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Renumber all balloons?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Reorders by document → page → top-to-bottom position. Existing
+              characteristic data stays attached but balloon numbers will
+              change. Cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={renumbering}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRenumber} disabled={renumbering}>
+              {renumbering ? "Renumbering..." : "Renumber"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
