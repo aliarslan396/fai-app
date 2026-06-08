@@ -15,7 +15,6 @@ import {
   Building2,
   Activity,
   CreditCard,
-  Truck,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -26,7 +25,6 @@ const tenantNav = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Parts", href: "/parts", icon: Package, permission: "parts.view" },
   { label: "Customers", href: "/customers", icon: Building2, permission: "customers.view" },
-  { label: "Suppliers", href: "/suppliers", icon: Truck, permission: "suppliers.view" },
   { label: "Inspection Plans", href: "/plans", icon: FileText, permission: "plans.view" },
   { label: "Inspections", href: "/inspections", icon: Stamp, permission: "inspections.view" },
   { label: "NCR / CAPA", href: "/ncr", icon: AlertTriangle, permission: "ncr.view" },
