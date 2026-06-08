@@ -6,8 +6,10 @@ use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\BalloonController;
 use App\Http\Controllers\Tenant\CharacteristicController;
 use App\Http\Controllers\Tenant\CustomerController;
+use App\Http\Controllers\Tenant\DashboardController;
 use App\Http\Controllers\Tenant\DrawingController;
 use App\Http\Controllers\Tenant\InspectionPlanController;
+use App\Http\Controllers\Tenant\InspectionSessionController;
 use App\Http\Controllers\Tenant\PartController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use App\Http\Controllers\Tenant\TenantSettingsController;
@@ -79,6 +81,9 @@ Route::prefix('api/v1')
 
             Route::get('health', fn () => ['status' => 'ok', 'tenant' => tenant('id')]);
 
+            // Dashboard KPIs + recent activity
+            Route::get('dashboard', [DashboardController::class, 'index']);
+
             // Tenant settings (admin only via permission)
             Route::prefix('settings')->group(function () {
                 Route::get('/', [TenantSettingsController::class, 'show']);
@@ -142,6 +147,15 @@ Route::prefix('api/v1')
 
             // Live requirement-string preview (not tied to a plan)
             Route::post('plans/preview', [CharacteristicController::class, 'preview']);
+
+            // Inspection Sessions — 6-step workflow (Module 4.3)
+            Route::prefix('workflow/sessions')->group(function () {
+                Route::get('/', [InspectionSessionController::class, 'index']);
+                Route::post('/', [InspectionSessionController::class, 'store']);
+                Route::get('{id}', [InspectionSessionController::class, 'show']);
+                Route::post('{id}/step3', [InspectionSessionController::class, 'step3']);
+                Route::delete('{id}', [InspectionSessionController::class, 'destroy']);
+            });
 
             // Drawings — upload + view + delete
             Route::prefix('drawings')->group(function () {
