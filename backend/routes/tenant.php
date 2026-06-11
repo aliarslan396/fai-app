@@ -8,6 +8,9 @@ use App\Http\Controllers\Tenant\CharacteristicController;
 use App\Http\Controllers\Tenant\CustomerController;
 use App\Http\Controllers\Tenant\DashboardController;
 use App\Http\Controllers\Tenant\DrawingController;
+use App\Http\Controllers\Tenant\FaiForm1Controller;
+use App\Http\Controllers\Tenant\FaiForm2Controller;
+use App\Http\Controllers\Tenant\FaiForm3Controller;
 use App\Http\Controllers\Tenant\InspectionPlanController;
 use App\Http\Controllers\Tenant\InspectionSessionController;
 use App\Http\Controllers\Tenant\PartController;
@@ -155,6 +158,33 @@ Route::prefix('api/v1')
                 Route::get('{id}', [InspectionSessionController::class, 'show']);
                 Route::post('{id}/step3', [InspectionSessionController::class, 'step3']);
                 Route::delete('{id}', [InspectionSessionController::class, 'destroy']);
+            });
+
+            // AS9102 Forms 1/2/3 (Module 4.4)
+            Route::prefix('fai')->group(function () {
+                // Auto-create or fetch the FAI record for a session at Step 4
+                Route::post('session/{session_id}/ensure', [FaiForm1Controller::class, 'ensureForSession']);
+
+                // Form 1
+                Route::get('{id}', [FaiForm1Controller::class, 'show']);
+                Route::patch('{id}', [FaiForm1Controller::class, 'update']);
+                Route::post('{id}/sync-from-balloons', [FaiForm1Controller::class, 'syncFromBalloons']);
+
+                // Form 1 Assembly Index rows
+                Route::post('{id}/index', [FaiForm1Controller::class, 'storeIndexRow']);
+                Route::delete('{id}/index/{row_id}', [FaiForm1Controller::class, 'destroyIndexRow']);
+
+                // Form 2
+                Route::get('{id}/form2', [FaiForm2Controller::class, 'show']);
+                Route::patch('{id}/form2', [FaiForm2Controller::class, 'update']);
+                Route::post('{id}/form2/materials', [FaiForm2Controller::class, 'storeMaterial']);
+                Route::patch('{id}/form2/materials/{row_id}', [FaiForm2Controller::class, 'updateMaterial']);
+                Route::delete('{id}/form2/materials/{row_id}', [FaiForm2Controller::class, 'destroyMaterial']);
+
+                // Form 3
+                Route::get('{id}/form3', [FaiForm3Controller::class, 'index']);
+                Route::patch('{id}/form3/rows/{row_id}', [FaiForm3Controller::class, 'updateRow']);
+                Route::post('form3/preview', [FaiForm3Controller::class, 'previewResult']);
             });
 
             // Drawings — upload + view + delete

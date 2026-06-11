@@ -29,7 +29,8 @@ export function WorkflowProgress({ currentStep, completedSteps, sessionId }: Pro
     if (!sessionId) return null
     if (n === 1 || n === 2) return "/workflow/start"
     if (n === 3) return `/workflow/new-inspection/${sessionId}`
-    return null // future modules will fill in Steps 4-6
+    if (n === 4) return `/inspections/${sessionId}/form3`
+    return null // Steps 5-6 land in Module 4.6
   }
 
   return (

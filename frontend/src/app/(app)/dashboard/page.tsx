@@ -34,6 +34,7 @@ interface RecentSession {
   session_type: "as9102" | "custom"
   current_step: number
   step6_complete: boolean
+  fai_id?: number | null
   updated_at: string
   part: { id: number; part_number: string; revision: string; description: string } | null
   plan: { id: number; plan_number: string; plan_name: string } | null
@@ -218,7 +219,9 @@ export default function DashboardPage() {
                           ? "/inspections"
                           : s.current_step <= 2
                             ? "/workflow/start"
-                            : `/workflow/new-inspection/${s.id}`
+                            : s.current_step >= 4 && s.session_type === "as9102"
+                              ? `/inspections/${s.id}/form3`
+                              : `/workflow/new-inspection/${s.id}`
                       }
                       className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/50"
                     >

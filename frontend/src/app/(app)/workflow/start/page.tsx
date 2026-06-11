@@ -85,6 +85,12 @@ export default function WorkflowStartPage() {
     loadPlans(p.id)
   }
 
+
+
+
+
+  
+
   const onPlanCreated = (plan: InspectionPlan) => {
     setPlans((prev) => [plan, ...prev])
     setSelectedPlanId(plan.id)

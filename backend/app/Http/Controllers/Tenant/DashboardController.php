@@ -62,7 +62,9 @@ class DashboardController extends Controller
                     'detail' => "Step {$s->current_step}/6 — {$s->plan?->plan_number}",
                     'href' => $s->current_step <= 2
                         ? '/workflow/start'
-                        : "/workflow/new-inspection/{$s->id}",
+                        : ($s->current_step >= 4 && $s->session_type === 'as9102'
+                            ? "/inspections/{$s->id}/form3"
+                            : "/workflow/new-inspection/{$s->id}"),
                     'updated_at' => $s->updated_at,
                 ];
             });

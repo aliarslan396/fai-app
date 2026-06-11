@@ -113,9 +113,14 @@ export default function NewInspectionPage() {
         quantity: parseInt(quantity, 10) || 1,
         inspection_type: inspectionType,
       })
-      toast.success("Inspection started — Form 3 coming in next module")
-      // For now route back to dashboard; Module 4.4 will route to /form3/{id}
-      router.push("/dashboard")
+      toast.success("Inspection started")
+      if (type === "as9102") {
+        router.push(`/inspections/${session.id}/form3`)
+      } else {
+        // Custom (DEF-QA-003) form lands in Module 4.5 — back to dashboard for now
+        toast.info("DEF-QA-003 entry page coming in Module 4.5")
+        router.push("/dashboard")
+      }
     } catch (err) {
       toast.error(getErrorMessage(err, "Failed to start inspection"))
     } finally {
@@ -308,7 +313,9 @@ export default function NewInspectionPage() {
 
       <div className="flex items-center justify-between border-t pt-4">
         <div className="text-sm text-muted-foreground">
-          Step 4 (measurement entry) opens after you create the inspection. Coming in Module 4.4.
+          {type === "as9102"
+            ? "Step 4 — Form 3 measurement entry opens after you create the inspection."
+            : "DEF-QA-003 entry page lands in Module 4.5."}
         </div>
         <Button onClick={submit} disabled={creating}>
           {creating ? (

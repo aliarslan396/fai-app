@@ -38,6 +38,11 @@ class FaiCharacteristic extends Model
         'sort_order' => 'integer',
     ];
 
+    public function form3Rows()
+    {
+        return $this->hasMany(FaiForm3Row::class, 'characteristic_id');
+    }
+
     public function plan()
     {
         return $this->belongsTo(InspectionPlan::class, 'plan_id');
