@@ -15,6 +15,7 @@ class InspectionSession extends Model
         'inspection_plan_id',
         'fai_id',
         'custom_report_id',
+        // kept here so $session->custom_report_id mass-assigns from controller
         'current_step',
         'step1_complete',
         'step2_complete',

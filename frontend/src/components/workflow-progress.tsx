@@ -9,6 +9,7 @@ interface Props {
   currentStep: number
   completedSteps: number[]
   sessionId?: number
+  sessionType?: "as9102" | "custom"
 }
 
 const STEPS = [
@@ -20,7 +21,7 @@ const STEPS = [
   { num: 6, label: "Export" },
 ]
 
-export function WorkflowProgress({ currentStep, completedSteps, sessionId }: Props) {
+export function WorkflowProgress({ currentStep, completedSteps, sessionId, sessionType }: Props) {
   const isComplete = (n: number) => completedSteps.includes(n)
   const isCurrent = (n: number) => n === currentStep
   const isUpcoming = (n: number) => !isComplete(n) && !isCurrent(n)
@@ -29,7 +30,11 @@ export function WorkflowProgress({ currentStep, completedSteps, sessionId }: Pro
     if (!sessionId) return null
     if (n === 1 || n === 2) return "/workflow/start"
     if (n === 3) return `/workflow/new-inspection/${sessionId}`
-    if (n === 4) return `/inspections/${sessionId}/form3`
+    if (n === 4) {
+      return sessionType === "custom"
+        ? `/inspections/${sessionId}/custom-report`
+        : `/inspections/${sessionId}/form3`
+    }
     return null // Steps 5-6 land in Module 4.6
   }
 

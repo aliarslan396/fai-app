@@ -44,8 +44,10 @@ const STEP_LABEL = ["Part", "Plan", "Start", "Actuals", "Sign", "Export"]
 function stepHref(s: Session): string {
   if (s.current_step <= 2) return "/workflow/start"
   if (s.current_step === 3) return `/workflow/new-inspection/${s.id}`
-  if (s.current_step >= 4 && s.session_type === "as9102") {
-    return `/inspections/${s.id}/form3`
+  if (s.current_step >= 4) {
+    return s.session_type === "as9102"
+      ? `/inspections/${s.id}/form3`
+      : `/inspections/${s.id}/custom-report`
   }
   return `/workflow/new-inspection/${s.id}`
 }

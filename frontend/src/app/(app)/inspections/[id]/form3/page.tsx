@@ -105,8 +105,9 @@ export default function Form3Page() {
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
 
-  // Local edit state — keyed by row id
+  // Local edit state — ref-backed to avoid stale-closure in debounced save
   const [edits, setEdits] = useState<Record<number, Partial<Form3Row>>>({})
+  const editsRef = useRef<Record<number, Partial<Form3Row>>>({})
   const [savingRow, setSavingRow] = useState<number | null>(null)
   const saveTimer = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
 
@@ -176,21 +177,23 @@ export default function Form3Page() {
   }
 
   const queueSave = (rowId: number, changes: Partial<Form3Row>) => {
-    setEdits((prev) => ({ ...prev, [rowId]: { ...prev[rowId], ...changes } }))
+    editsRef.current[rowId] = { ...editsRef.current[rowId], ...changes }
+    setEdits({ ...editsRef.current })
 
     if (saveTimer.current[rowId]) clearTimeout(saveTimer.current[rowId])
     saveTimer.current[rowId] = setTimeout(() => doSave(rowId), 1500)
   }
 
   const doSave = async (rowId: number) => {
-    if (!data) return
-    const payload = edits[rowId]
+    const payload = editsRef.current[rowId]
     if (!payload || Object.keys(payload).length === 0) return
 
     setSavingRow(rowId)
     try {
+      const form1Id = data?.form1.id
+      if (!form1Id) return
       const { data: r } = await api.patch(
-        `/fai/${data.form1.id}/form3/rows/${rowId}`,
+        `/fai/${form1Id}/form3/rows/${rowId}`,
         payload
       )
       // Replace just this row in state
@@ -214,11 +217,8 @@ export default function Form3Page() {
           },
         }
       })
-      setEdits((prev) => {
-        const copy = { ...prev }
-        delete copy[rowId]
-        return copy
-      })
+      delete editsRef.current[rowId]
+      setEdits({ ...editsRef.current })
     } catch (err) {
       toast.error(getErrorMessage(err, "Row save failed"))
     } finally {

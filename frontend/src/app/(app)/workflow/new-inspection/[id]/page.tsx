@@ -117,9 +117,7 @@ export default function NewInspectionPage() {
       if (type === "as9102") {
         router.push(`/inspections/${session.id}/form3`)
       } else {
-        // Custom (DEF-QA-003) form lands in Module 4.5 — back to dashboard for now
-        toast.info("DEF-QA-003 entry page coming in Module 4.5")
-        router.push("/dashboard")
+        router.push(`/inspections/${session.id}/custom-report`)
       }
     } catch (err) {
       toast.error(getErrorMessage(err, "Failed to start inspection"))

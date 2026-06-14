@@ -6,6 +6,7 @@ use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\BalloonController;
 use App\Http\Controllers\Tenant\CharacteristicController;
 use App\Http\Controllers\Tenant\CustomerController;
+use App\Http\Controllers\Tenant\CustomReportController;
 use App\Http\Controllers\Tenant\DashboardController;
 use App\Http\Controllers\Tenant\DrawingController;
 use App\Http\Controllers\Tenant\FaiForm1Controller;
@@ -185,6 +186,16 @@ Route::prefix('api/v1')
                 Route::get('{id}/form3', [FaiForm3Controller::class, 'index']);
                 Route::patch('{id}/form3/rows/{row_id}', [FaiForm3Controller::class, 'updateRow']);
                 Route::post('form3/preview', [FaiForm3Controller::class, 'previewResult']);
+            });
+
+            // DEF-QA-003 Custom Inspection Report (Module 4.5)
+            Route::prefix('custom-reports')->group(function () {
+                Route::post('session/{session_id}/ensure', [CustomReportController::class, 'ensureForSession']);
+                Route::get('{id}', [CustomReportController::class, 'show']);
+                Route::patch('{id}', [CustomReportController::class, 'update']);
+                Route::patch('{id}/rows/{row_id}', [CustomReportController::class, 'updateRow']);
+                Route::post('{id}/sync-from-plan', [CustomReportController::class, 'syncFromPlan']);
+                Route::post('{id}/import-from-fai', [CustomReportController::class, 'importFromFai']);
             });
 
             // Drawings — upload + view + delete

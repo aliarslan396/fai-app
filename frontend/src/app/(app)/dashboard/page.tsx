@@ -219,8 +219,10 @@ export default function DashboardPage() {
                           ? "/inspections"
                           : s.current_step <= 2
                             ? "/workflow/start"
-                            : s.current_step >= 4 && s.session_type === "as9102"
-                              ? `/inspections/${s.id}/form3`
+                            : s.current_step >= 4
+                              ? (s.session_type === "as9102"
+                                  ? `/inspections/${s.id}/form3`
+                                  : `/inspections/${s.id}/custom-report`)
                               : `/workflow/new-inspection/${s.id}`
                       }
                       className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/50"
