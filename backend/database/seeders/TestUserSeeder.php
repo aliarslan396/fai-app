@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
+use App\Models\TenantUser;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -26,7 +26,7 @@ class TestUserSeeder extends Seeder
         ];
 
         foreach ($users as $data) {
-            $user = User::firstOrNew(['email' => $data['email']]);
+            $user = TenantUser::firstOrNew(['email' => $data['email']]);
             $user->name = $data['name'];
             $user->password = $pwd;
             $user->email_verified_at = $user->email_verified_at ?? now();
