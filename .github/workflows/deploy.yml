@@ -59,6 +59,9 @@ jobs:
           echo "==> Backend: seed tenant roles"
           $COMPOSE exec -T backend php artisan tenants:seed --class=TenantRoleSeeder --force </dev/null
 
+          echo "==> Backend: seed test users (5 role accounts per tenant)"
+          $COMPOSE exec -T backend php artisan tenants:seed --class=TestUserSeeder --force </dev/null
+
           echo "==> Backend: cache"
           $COMPOSE exec -T backend php artisan optimize:clear </dev/null
           $COMPOSE exec -T backend php artisan route:cache </dev/null
