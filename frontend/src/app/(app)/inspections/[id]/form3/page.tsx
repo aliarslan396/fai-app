@@ -119,8 +119,7 @@ export default function Form3Page() {
       const s: SessionInfo = sessionRes.data.session
 
       if (s.session_type !== "as9102") {
-        setError("This inspection isn't AS9102. Form 3 only applies to AS9102 FAI.")
-        setSession(s)
+        router.replace(`/inspections/${sessionId}/custom-report`)
         return
       }
 
@@ -285,7 +284,7 @@ export default function Form3Page() {
         </div>
       </div>
 
-      <WorkflowProgress currentStep={4} completedSteps={completedSteps} sessionId={session.id} />
+      <WorkflowProgress currentStep={4} completedSteps={completedSteps} sessionId={session.id} sessionType="as9102" />
 
       {/* Summary banner */}
       <Card>

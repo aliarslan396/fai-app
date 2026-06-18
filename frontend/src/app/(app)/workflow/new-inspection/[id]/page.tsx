@@ -158,7 +158,7 @@ export default function NewInspectionPage() {
         </p>
       </div>
 
-      <WorkflowProgress currentStep={3} completedSteps={completedSteps} sessionId={session.id} />
+      <WorkflowProgress currentStep={3} completedSteps={completedSteps} sessionId={session.id} sessionType={session.session_type} />
 
       {/* Type selector */}
       <Card>

@@ -147,8 +147,7 @@ export default function CustomReportPage() {
       const s: SessionInfo = sessionRes.data.session
 
       if (s.session_type !== "custom") {
-        setError("This session isn't a Custom (DEF-QA-003) inspection.")
-        setSession(s)
+        router.replace(`/inspections/${sessionId}/form3`)
         return
       }
 
@@ -344,7 +343,7 @@ export default function CustomReportPage() {
         </div>
       </div>
 
-      <WorkflowProgress currentStep={4} completedSteps={completedSteps} sessionId={session.id} />
+      <WorkflowProgress currentStep={4} completedSteps={completedSteps} sessionId={session.id} sessionType="custom" />
 
       {/* Header — 2 rows per doc */}
       <Card>
