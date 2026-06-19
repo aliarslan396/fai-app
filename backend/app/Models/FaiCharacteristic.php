@@ -28,6 +28,8 @@ class FaiCharacteristic extends Model
         'inspection_method',
         'requirement_string',
         'sort_order',
+        'use_default_tolerance',
+        'nominal_decimals',
     ];
 
     protected $casts = [
@@ -36,6 +38,8 @@ class FaiCharacteristic extends Model
         'upper_tolerance' => 'decimal:6',
         'lower_tolerance' => 'decimal:6',
         'sort_order' => 'integer',
+        'use_default_tolerance' => 'boolean',
+        'nominal_decimals' => 'integer',
     ];
 
     public function form3Rows()

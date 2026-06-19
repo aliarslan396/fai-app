@@ -18,6 +18,8 @@ use App\Models\FaiCharacteristic;
  */
 class PassFailEvaluator
 {
+    public function __construct(private ToleranceResolver $resolver) {}
+
     public function evaluate(?FaiCharacteristic $char, ?string $result): string
     {
         if (! $char) {
@@ -56,12 +58,11 @@ class PassFailEvaluator
             return 'not_measured';
         }
 
+        [$upperTol, $lowerTol] = $this->resolver->resolve($char);
         $nominal = (float) $char->nominal;
-        $upperTol = (float) $char->upper_tolerance;
-        $lowerTol = (float) $char->lower_tolerance;
 
-        $min = $nominal - $lowerTol;
-        $max = $nominal + $upperTol;
+        $min = $nominal - (float) ($lowerTol ?? 0);
+        $max = $nominal + (float) ($upperTol ?? 0);
 
         return ($measured >= $min && $measured <= $max) ? 'pass' : 'fail';
     }
@@ -75,8 +76,9 @@ class PassFailEvaluator
             return 'not_measured';
         }
 
-        $tolerance = (float) ($char->upper_tolerance ?? 0);
-        if ($tolerance <= 0) {
+        // GD&T is in the excluded list — resolver returns the raw stored value.
+        [$tolerance, ] = $this->resolver->resolve($char);
+        if (! $tolerance || $tolerance <= 0) {
             return 'not_measured';
         }
 

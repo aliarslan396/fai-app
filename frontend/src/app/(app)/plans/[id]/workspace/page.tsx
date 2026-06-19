@@ -51,6 +51,10 @@ interface Plan {
   characteristic_count: number
   part: { id: number; part_number: string; revision: string; description: string } | null
   documents: PlanDocument[]
+  tol_1dp?: number | string | null
+  tol_2dp?: number | string | null
+  tol_3dp?: number | string | null
+  tol_angular?: number | string | null
 }
 
 interface Balloon {
@@ -538,6 +542,12 @@ export default function PlanWorkspacePage() {
                 balloonNumber={selectedBalloon.balloon_number}
                 initialCharType={selectedBalloon.char_type}
                 initialCharacteristic={selectedBalloon.characteristic}
+                planTolerances={{
+                  tol_1dp: Number(plan.tol_1dp ?? 0.03),
+                  tol_2dp: Number(plan.tol_2dp ?? 0.01),
+                  tol_3dp: Number(plan.tol_3dp ?? 0.005),
+                  tol_angular: Number(plan.tol_angular ?? 0.5),
+                }}
                 onSaved={handleCharacteristicSaved}
               />
             </>

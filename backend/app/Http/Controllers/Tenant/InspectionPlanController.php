@@ -65,6 +65,10 @@ class InspectionPlanController extends Controller
             'part_id' => 'required|integer|exists:parts,id',
             'plan_name' => 'required|string|min:2|max:200',
             'status' => 'sometimes|in:draft,active,superseded',
+            'tol_1dp' => 'sometimes|numeric|min:0|max:10',
+            'tol_2dp' => 'sometimes|numeric|min:0|max:10',
+            'tol_3dp' => 'sometimes|numeric|min:0|max:10',
+            'tol_angular' => 'sometimes|numeric|min:0|max:90',
         ]);
 
         $data['plan_number'] = $this->numbers->next('IP');
@@ -93,6 +97,10 @@ class InspectionPlanController extends Controller
         $data = $request->validate([
             'plan_name' => 'sometimes|string|min:2|max:200',
             'status' => 'sometimes|in:draft,active,superseded',
+            'tol_1dp' => 'sometimes|numeric|min:0|max:10',
+            'tol_2dp' => 'sometimes|numeric|min:0|max:10',
+            'tol_3dp' => 'sometimes|numeric|min:0|max:10',
+            'tol_angular' => 'sometimes|numeric|min:0|max:90',
         ]);
 
         $oldValues = $plan->only(array_keys($data));

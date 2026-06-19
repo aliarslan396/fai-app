@@ -38,6 +38,10 @@ export interface InspectionPlan {
   balloons_count?: number
   characteristics_count?: number
   created_at: string
+  tol_1dp?: number | string
+  tol_2dp?: number | string
+  tol_3dp?: number | string
+  tol_angular?: number | string
 }
 
 interface Props {
@@ -48,7 +52,14 @@ interface Props {
   onSaved: (plan: InspectionPlan) => void
 }
 
-const EMPTY = { plan_name: "", status: "draft" as const }
+const EMPTY = {
+  plan_name: "",
+  status: "draft" as const,
+  tol_1dp: "0.030",
+  tol_2dp: "0.010",
+  tol_3dp: "0.005",
+  tol_angular: "0.5",
+}
 
 function getFieldErrors(err: unknown): Record<string, string> | null {
   const axiosErr = err as AxiosError<{ errors?: Record<string, string[]> }>
@@ -63,15 +74,20 @@ function getFieldErrors(err: unknown): Record<string, string> | null {
 
 export function PlanFormDialog({ open, onOpenChange, partId, plan, onSaved }: Props) {
   const isEdit = !!plan
-  const [form, setForm] = useState<{ plan_name: string; status: "draft" | "active" | "superseded" }>(
-    EMPTY
-  )
+  const [form, setForm] = useState<typeof EMPTY>(EMPTY)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (plan) {
-      setForm({ plan_name: plan.plan_name, status: plan.status })
+      setForm({
+        plan_name: plan.plan_name,
+        status: plan.status as typeof EMPTY.status,
+        tol_1dp: String(plan.tol_1dp ?? "0.030"),
+        tol_2dp: String(plan.tol_2dp ?? "0.010"),
+        tol_3dp: String(plan.tol_3dp ?? "0.005"),
+        tol_angular: String(plan.tol_angular ?? "0.5"),
+      })
     } else {
       setForm(EMPTY)
     }
@@ -87,11 +103,28 @@ export function PlanFormDialog({ open, onOpenChange, partId, plan, onSaved }: Pr
       return
     }
 
+    const tolFields = ["tol_1dp", "tol_2dp", "tol_3dp", "tol_angular"] as const
+    for (const k of tolFields) {
+      const v = parseFloat(form[k])
+      if (isNaN(v) || v < 0) {
+        setErrors({ [k]: "Must be a positive number" })
+        return
+      }
+    }
+
     setSaving(true)
     try {
-      const payload = { ...form, part_id: partId }
+      const tolPayload = {
+        tol_1dp: parseFloat(form.tol_1dp),
+        tol_2dp: parseFloat(form.tol_2dp),
+        tol_3dp: parseFloat(form.tol_3dp),
+        tol_angular: parseFloat(form.tol_angular),
+      }
+      const payload = isEdit && plan
+        ? { plan_name: form.plan_name, status: form.status, ...tolPayload }
+        : { plan_name: form.plan_name, status: form.status, part_id: partId, ...tolPayload }
       const { data } = isEdit && plan
-        ? await api.patch(`/plans/${plan.id}`, { plan_name: form.plan_name, status: form.status })
+        ? await api.patch(`/plans/${plan.id}`, payload)
         : await api.post("/plans", payload)
 
       toast.success(isEdit ? "Plan updated" : `Plan ${data.plan.plan_number} created`)
@@ -111,7 +144,7 @@ export function PlanFormDialog({ open, onOpenChange, partId, plan, onSaved }: Pr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit inspection plan" : "New inspection plan"}</DialogTitle>
           <DialogDescription>
@@ -142,7 +175,7 @@ export function PlanFormDialog({ open, onOpenChange, partId, plan, onSaved }: Pr
             <Select
               value={form.status}
               onValueChange={(v) =>
-                setForm((f) => ({ ...f, status: v as "draft" | "active" | "superseded" }))
+                setForm((f) => ({ ...f, status: v as typeof EMPTY.status }))
               }
               disabled={saving}
             >
@@ -155,6 +188,83 @@ export function PlanFormDialog({ open, onOpenChange, partId, plan, onSaved }: Pr
                 <SelectItem value="superseded">Superseded</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Block tolerance — from drawing's "unless otherwise specified" corner box */}
+          <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+            <div>
+              <h4 className="text-sm font-semibold">Block tolerance</h4>
+              <p className="text-xs text-muted-foreground">
+                Copy from the drawing&apos;s &quot;unless otherwise specified&quot; box.
+                Used as the default for every bubble on this plan.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="tol_1dp" className="text-xs">
+                  .X (1 decimal) ±
+                </Label>
+                <Input
+                  id="tol_1dp"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  value={form.tol_1dp}
+                  onChange={(e) => setForm((f) => ({ ...f, tol_1dp: e.target.value }))}
+                  disabled={saving}
+                />
+                {errors.tol_1dp && <p className="text-xs text-destructive">{errors.tol_1dp}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="tol_2dp" className="text-xs">
+                  .XX (2 decimal) ±
+                </Label>
+                <Input
+                  id="tol_2dp"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  value={form.tol_2dp}
+                  onChange={(e) => setForm((f) => ({ ...f, tol_2dp: e.target.value }))}
+                  disabled={saving}
+                />
+                {errors.tol_2dp && <p className="text-xs text-destructive">{errors.tol_2dp}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="tol_3dp" className="text-xs">
+                  .XXX (3 decimal) ±
+                </Label>
+                <Input
+                  id="tol_3dp"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  value={form.tol_3dp}
+                  onChange={(e) => setForm((f) => ({ ...f, tol_3dp: e.target.value }))}
+                  disabled={saving}
+                />
+                {errors.tol_3dp && <p className="text-xs text-destructive">{errors.tol_3dp}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="tol_angular" className="text-xs">
+                  Angular ± (degrees)
+                </Label>
+                <Input
+                  id="tol_angular"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={form.tol_angular}
+                  onChange={(e) => setForm((f) => ({ ...f, tol_angular: e.target.value }))}
+                  disabled={saving}
+                />
+                {errors.tol_angular && <p className="text-xs text-destructive">{errors.tol_angular}</p>}
+              </div>
+            </div>
           </div>
 
           <DialogFooter>

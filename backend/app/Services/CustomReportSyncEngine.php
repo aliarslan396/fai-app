@@ -15,7 +15,10 @@ use App\Models\InspectionPlan;
  */
 class CustomReportSyncEngine
 {
-    public function __construct(private RequirementFormatter $formatter) {}
+    public function __construct(
+        private RequirementFormatter $formatter,
+        private ToleranceResolver $resolver,
+    ) {}
 
     public function sync(CustomInspectionReport $report): int
     {
@@ -39,13 +42,17 @@ class CustomReportSyncEngine
                 continue;
             }
 
-            $requirement = $this->formatter->format($char->only([
-                'char_type', 'description',
-                'nominal', 'upper_tolerance', 'lower_tolerance', 'unit',
-                'gdt_symbol', 'gdt_datum_a', 'gdt_datum_b', 'gdt_datum_c',
-                'gdt_material_condition',
-                'finish_value', 'finish_unit',
-            ]));
+            [$resolvedUpper, $resolvedLower] = $this->resolver->resolve($char, $plan);
+
+            $requirement = $this->formatter->format([
+                ...$char->only([
+                    'char_type', 'description', 'nominal', 'unit',
+                    'gdt_symbol', 'gdt_datum_a', 'gdt_datum_b', 'gdt_datum_c',
+                    'gdt_material_condition', 'finish_value', 'finish_unit',
+                ]),
+                'upper_tolerance' => $resolvedUpper,
+                'lower_tolerance' => $resolvedLower,
+            ]);
 
             $existing = CustomReportCharacteristic::where('custom_report_id', $report->id)
                 ->where('row_number', $rowNumber)

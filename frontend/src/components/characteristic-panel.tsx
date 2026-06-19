@@ -5,6 +5,7 @@ import { Loader2, Save } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -44,6 +45,15 @@ export interface Characteristic {
   finish_unit?: string | null
   inspection_method?: string | null
   requirement_string?: string | null
+  use_default_tolerance?: boolean | null
+  nominal_decimals?: number | null
+}
+
+export interface PlanTolerances {
+  tol_1dp: number
+  tol_2dp: number
+  tol_3dp: number
+  tol_angular: number
 }
 
 interface Props {
@@ -52,8 +62,32 @@ interface Props {
   balloonNumber: number
   initialCharType: CharType
   initialCharacteristic?: Characteristic | null
+  planTolerances?: PlanTolerances | null
   onSaved: (char: Characteristic) => void
 }
+
+/** Count decimals in a typed string like "1.500" -> 3, "1.5" -> 1, "15" -> 0. */
+function countDecimals(v: string | number | null | undefined): number {
+  if (v === null || v === undefined) return 0
+  const s = String(v).trim()
+  if (s === "") return 0
+  const dot = s.indexOf(".")
+  if (dot === -1) return 0
+  return Math.min(s.length - dot - 1, 6)
+}
+
+function resolveDefault(
+  type: CharType,
+  decimals: number,
+  tols: PlanTolerances,
+): number {
+  if (type === "angle") return tols.tol_angular
+  if (decimals >= 3) return tols.tol_3dp
+  if (decimals === 2) return tols.tol_2dp
+  return tols.tol_1dp
+}
+
+const BLOCK_TOL_TYPES: CharType[] = ["linear", "diameter", "radius", "angle"]
 
 // 14 GD&T symbols per doc 4.2
 const GDT_SYMBOLS = [
@@ -81,6 +115,7 @@ export function CharacteristicPanel({
   balloonNumber,
   initialCharType,
   initialCharacteristic,
+  planTolerances,
   onSaved,
 }: Props) {
   const [form, setForm] = useState<Characteristic>({
@@ -98,6 +133,8 @@ export function CharacteristicPanel({
     finish_value: "",
     finish_unit: "Ra μin",
     inspection_method: "",
+    use_default_tolerance: true,
+    nominal_decimals: 0,
   })
   const [preview, setPreview] = useState("")
   const [saving, setSaving] = useState(false)
@@ -112,10 +149,18 @@ export function CharacteristicPanel({
         nominal: initialCharacteristic.nominal ?? "",
         upper_tolerance: initialCharacteristic.upper_tolerance ?? "",
         lower_tolerance: initialCharacteristic.lower_tolerance ?? "",
+        use_default_tolerance: initialCharacteristic.use_default_tolerance ?? true,
+        nominal_decimals:
+          initialCharacteristic.nominal_decimals ?? countDecimals(initialCharacteristic.nominal),
       }))
       setPreview(initialCharacteristic.requirement_string ?? "")
     } else {
-      setForm((prev) => ({ ...prev, char_type: initialCharType }))
+      setForm((prev) => ({
+        ...prev,
+        char_type: initialCharType,
+        use_default_tolerance: true,
+        nominal_decimals: 0,
+      }))
       setPreview("")
     }
   }, [initialCharacteristic, initialCharType, balloonId])
@@ -137,6 +182,50 @@ export function CharacteristicPanel({
 
   const update = (k: keyof Characteristic, v: unknown) => {
     setForm((prev) => ({ ...prev, [k]: v as never }))
+  }
+
+  const updateCharType = (v: CharType) => {
+    setForm((prev) => {
+      const next = { ...prev, char_type: v }
+      if (prev.use_default_tolerance && planTolerances && BLOCK_TOL_TYPES.includes(v)) {
+        const tol = resolveDefault(
+          v,
+          prev.nominal_decimals ?? countDecimals(prev.nominal),
+          planTolerances,
+        )
+        next.upper_tolerance = tol
+        next.lower_tolerance = tol
+      }
+      return next
+    })
+  }
+
+  const updateNominal = (v: string) => {
+    setForm((prev) => {
+      const next = { ...prev, nominal: v, nominal_decimals: countDecimals(v) }
+      if (prev.use_default_tolerance && planTolerances && BLOCK_TOL_TYPES.includes(prev.char_type)) {
+        const tol = resolveDefault(prev.char_type, countDecimals(v), planTolerances)
+        next.upper_tolerance = tol
+        next.lower_tolerance = tol
+      }
+      return next
+    })
+  }
+
+  const toggleDefault = (checked: boolean) => {
+    setForm((prev) => {
+      const next = { ...prev, use_default_tolerance: checked }
+      if (checked && planTolerances && BLOCK_TOL_TYPES.includes(prev.char_type)) {
+        const tol = resolveDefault(
+          prev.char_type,
+          prev.nominal_decimals ?? countDecimals(prev.nominal),
+          planTolerances,
+        )
+        next.upper_tolerance = tol
+        next.lower_tolerance = tol
+      }
+      return next
+    })
   }
 
   const save = async () => {
@@ -165,7 +254,7 @@ export function CharacteristicPanel({
           <Label className="mb-1.5 block text-xs">Type</Label>
           <Select
             value={form.char_type}
-            onValueChange={(v) => update("char_type", v as CharType)}
+            onValueChange={(v) => updateCharType(v as CharType)}
             disabled={saving}
           >
             <SelectTrigger className="w-full">
@@ -199,32 +288,29 @@ export function CharacteristicPanel({
               <div>
                 <Label className="text-xs">Nominal</Label>
                 <Input
-                  type="number"
-                  step="any"
+                  type="text"
+                  inputMode="decimal"
                   value={form.nominal as string | number}
-                  onChange={(e) => update("nominal", e.target.value)}
+                  onChange={(e) => updateNominal(e.target.value)}
+                  placeholder="e.g. 1.500"
                 />
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Type with trailing zeros to match drawing precision (1.500 = 3 decimals).
+                </p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs">+ Tol</Label>
-                  <Input
-                    type="number"
-                    step="any"
-                    value={form.upper_tolerance as string | number}
-                    onChange={(e) => update("upper_tolerance", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">- Tol</Label>
-                  <Input
-                    type="number"
-                    step="any"
-                    value={form.lower_tolerance as string | number}
-                    onChange={(e) => update("lower_tolerance", e.target.value)}
-                  />
-                </div>
-              </div>
+
+              <ToleranceBlock
+                useDefault={form.use_default_tolerance ?? true}
+                onToggle={toggleDefault}
+                upper={form.upper_tolerance}
+                lower={form.lower_tolerance}
+                onUpperChange={(v) => update("upper_tolerance", v)}
+                onLowerChange={(v) => update("lower_tolerance", v)}
+                planTolerances={planTolerances}
+                charType={t}
+                decimals={form.nominal_decimals ?? 0}
+              />
+
               <div>
                 <Label className="text-xs">Unit</Label>
                 <Select
@@ -255,32 +341,25 @@ export function CharacteristicPanel({
               <div>
                 <Label className="text-xs">Nominal (degrees)</Label>
                 <Input
-                  type="number"
-                  step="any"
+                  type="text"
+                  inputMode="decimal"
                   value={form.nominal as string | number}
-                  onChange={(e) => update("nominal", e.target.value)}
+                  onChange={(e) => updateNominal(e.target.value)}
+                  placeholder="e.g. 45"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs">+ Tol</Label>
-                  <Input
-                    type="number"
-                    step="any"
-                    value={form.upper_tolerance as string | number}
-                    onChange={(e) => update("upper_tolerance", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">- Tol</Label>
-                  <Input
-                    type="number"
-                    step="any"
-                    value={form.lower_tolerance as string | number}
-                    onChange={(e) => update("lower_tolerance", e.target.value)}
-                  />
-                </div>
-              </div>
+
+              <ToleranceBlock
+                useDefault={form.use_default_tolerance ?? true}
+                onToggle={toggleDefault}
+                upper={form.upper_tolerance}
+                lower={form.lower_tolerance}
+                onUpperChange={(v) => update("upper_tolerance", v)}
+                onLowerChange={(v) => update("lower_tolerance", v)}
+                planTolerances={planTolerances}
+                charType={t}
+                decimals={form.nominal_decimals ?? 0}
+              />
             </>
           )}
 
@@ -432,6 +511,96 @@ export function CharacteristicPanel({
           Save
         </Button>
       </div>
+    </div>
+  )
+}
+
+interface ToleranceBlockProps {
+  useDefault: boolean
+  onToggle: (checked: boolean) => void
+  upper: number | string | null | undefined
+  lower: number | string | null | undefined
+  onUpperChange: (v: string) => void
+  onLowerChange: (v: string) => void
+  planTolerances?: PlanTolerances | null
+  charType: CharType
+  decimals: number
+}
+
+function ToleranceBlock({
+  useDefault,
+  onToggle,
+  upper,
+  lower,
+  onUpperChange,
+  onLowerChange,
+  planTolerances,
+  charType,
+  decimals,
+}: ToleranceBlockProps) {
+  const resolved = planTolerances ? resolveDefault(charType, decimals, planTolerances) : null
+  const ruleLabel =
+    charType === "angle"
+      ? "angular"
+      : decimals >= 3
+        ? "3-decimal"
+        : decimals === 2
+          ? "2-decimal"
+          : "1-decimal"
+
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id="use-default-tol"
+          checked={useDefault}
+          onCheckedChange={(c) => onToggle(c === true)}
+        />
+        <div className="flex-1">
+          <Label htmlFor="use-default-tol" className="text-xs font-medium">
+            Use default tolerance
+          </Label>
+          <p className="text-[11px] text-muted-foreground">
+            Pulls ± value from this plan&apos;s block tolerance based on the nominal&apos;s precision.
+          </p>
+        </div>
+      </div>
+
+      {useDefault ? (
+        <div className="rounded bg-background px-2 py-1.5 font-mono text-xs">
+          {planTolerances ? (
+            <>
+              ±{resolved}{" "}
+              <span className="text-muted-foreground">
+                ({ruleLabel} rule from plan)
+              </span>
+            </>
+          ) : (
+            <span className="text-muted-foreground">No plan tolerances loaded</span>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs">+ Tol</Label>
+            <Input
+              type="number"
+              step="any"
+              value={(upper ?? "") as string | number}
+              onChange={(e) => onUpperChange(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">- Tol</Label>
+            <Input
+              type="number"
+              step="any"
+              value={(lower ?? "") as string | number}
+              onChange={(e) => onLowerChange(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -7,13 +7,17 @@ use App\Models\DrawingBalloon;
 use App\Models\FaiCharacteristic;
 use App\Models\InspectionPlan;
 use App\Services\RequirementFormatter;
+use App\Services\ToleranceResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CharacteristicController extends Controller
 {
-    public function __construct(private RequirementFormatter $formatter) {}
+    public function __construct(
+        private RequirementFormatter $formatter,
+        private ToleranceResolver $resolver,
+    ) {}
 
     /**
      * Save (upsert) a characteristic for a balloon.
@@ -42,7 +46,18 @@ class CharacteristicController extends Controller
             'finish_value' => 'nullable|string|max:50',
             'finish_unit' => 'nullable|string|max:30',
             'inspection_method' => 'nullable|string|max:100',
+            'use_default_tolerance' => 'nullable|boolean',
+            'nominal_decimals' => 'nullable|integer|min:0|max:6',
         ]);
+
+        // If using plan defaults, overwrite upper/lower from resolver before formatting.
+        if (! empty($data['use_default_tolerance'])) {
+            [$up, $lo] = $this->resolveFromPlan($plan, $data);
+            if ($up !== null) {
+                $data['upper_tolerance'] = $up;
+                $data['lower_tolerance'] = $lo;
+            }
+        }
 
         $requirementString = $this->formatter->format($data + ['char_type' => $data['char_type']]);
 
@@ -115,5 +130,34 @@ class CharacteristicController extends Controller
         if (! $user || ! $user->hasPermissionTo($permission)) {
             abort(403, "Missing permission: {$permission}");
         }
+    }
+
+    /**
+     * Read tolerance from plan defaults using the supplied char_type +
+     * nominal_decimals (or 0 when not provided). Returns [upper, lower] or
+     * [null, null] when block tolerance doesn't apply to this type.
+     *
+     * @return array{0: ?float, 1: ?float}
+     */
+    private function resolveFromPlan(InspectionPlan $plan, array $data): array
+    {
+        $excluded = ['gdt', 'surface_finish', 'threaded', 'chamfer', 'note'];
+        if (in_array($data['char_type'] ?? '', $excluded, true)) {
+            return [null, null];
+        }
+
+        if (($data['char_type'] ?? '') === 'angle') {
+            $tol = (float) $plan->tol_angular;
+            return [$tol, $tol];
+        }
+
+        $decimals = (int) ($data['nominal_decimals'] ?? 0);
+        $tol = match (true) {
+            $decimals >= 3 => (float) $plan->tol_3dp,
+            $decimals === 2 => (float) $plan->tol_2dp,
+            default => (float) $plan->tol_1dp,
+        };
+
+        return [$tol, $tol];
     }
 }

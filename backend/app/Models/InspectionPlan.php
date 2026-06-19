@@ -18,11 +18,19 @@ class InspectionPlan extends Model
         'balloon_count',
         'characteristic_count',
         'created_by',
+        'tol_1dp',
+        'tol_2dp',
+        'tol_3dp',
+        'tol_angular',
     ];
 
     protected $casts = [
         'balloon_count' => 'integer',
         'characteristic_count' => 'integer',
+        'tol_1dp' => 'decimal:5',
+        'tol_2dp' => 'decimal:5',
+        'tol_3dp' => 'decimal:5',
+        'tol_angular' => 'decimal:5',
     ];
 
     public function part()
