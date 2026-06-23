@@ -145,6 +145,12 @@ Route::prefix('api/v1')
                 Route::delete('{id}/balloons/{balloon_id}', [BalloonController::class, 'destroy']);
                 Route::post('{id}/renumber', [BalloonController::class, 'renumberAll']);
 
+                // AI auto-detect (Ollama-backed)
+                Route::get('{id}/drawings/{drawing_id}/pages/{page}/auto-detect',
+                    [BalloonController::class, 'autoDetect']);
+                Route::post('{id}/balloons/bulk-accept',
+                    [BalloonController::class, 'bulkAccept']);
+
                 // Characteristic saved per balloon
                 Route::post('{id}/balloons/{balloon_id}/characteristic', [CharacteristicController::class, 'save']);
             });

@@ -1,0 +1,38 @@
+name: fai
+
+# Ollama service for local AI classification.
+# Loaded ONLY on production via `-f docker-compose.ollama.yml` chained
+# onto docker-compose.prod.yml. Local dev never runs this — slow internet
+# + 4 GB RAM development laptops would suffer.
+#
+# Model: llama3.2:3b (~2 GB) — chosen over Mistral 7B because current
+# production droplet has 4 GB RAM. Doc spec is Mistral 7B; swap model
+# name here when droplet upgraded to ≥16 GB.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: fai_ollama
+    restart: unless-stopped
+    volumes:
+      - fai_ollama_data:/root/.ollama
+    networks:
+      - fai_network
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  ocr:
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: llama3.2:3b
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  fai_ollama_data:
+    name: fai_ollama_data

@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Drawing;
 use App\Models\DrawingBalloon;
+use App\Models\DrawingPage;
 use App\Models\FaiCharacteristic;
 use App\Models\InspectionPlan;
+use App\Services\OcrService;
 use App\Services\RequirementFormatter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +17,10 @@ use Illuminate\Support\Facades\DB;
 
 class BalloonController extends Controller
 {
-    public function __construct(private RequirementFormatter $formatter) {}
+    public function __construct(
+        private RequirementFormatter $formatter,
+        private OcrService $ocr,
+    ) {}
 
     public function index(Request $request, int $planId): JsonResponse
     {
@@ -191,6 +196,188 @@ class BalloonController extends Controller
         });
 
         return response()->json(['message' => 'Renumbered']);
+    }
+
+    /**
+     * AI auto-detect candidates for a drawing page.
+     * Reads stored OCR text blocks → classifies each via Ollama → returns
+     * ranked candidate list WITHOUT creating balloons. Frontend renders
+     * the candidates; inspector accepts the ones they want via bulkAccept.
+     */
+    public function autoDetect(int $planId, int $drawingId, int $pageNumber): JsonResponse
+    {
+        $this->checkPermission('plans.edit');
+
+        $plan = InspectionPlan::findOrFail($planId);
+        $drawing = Drawing::where('id', $drawingId)
+            ->where('plan_id', $plan->id)
+            ->firstOrFail();
+
+        $page = DrawingPage::where('drawing_id', $drawing->id)
+            ->where('page_number', $pageNumber)
+            ->firstOrFail();
+
+        if (! $page->ocr_text || empty($page->ocr_text['blocks'] ?? [])) {
+            return response()->json([
+                'message' => 'No OCR data on this page yet. Run OCR first.',
+                'candidates' => [],
+            ], 409);
+        }
+
+        $blocks = $page->ocr_text['blocks'];
+
+        // Keep only blocks that look dimensional: contain digits OR a GD&T glyph
+        $dimensionLike = array_values(array_filter($blocks, function ($b) {
+            $text = (string) ($b['text'] ?? '');
+            if (preg_match('/\d/', $text)) {
+                return true;
+            }
+            return (bool) preg_match('/[⊕⊥⏥⌭⌒⌓∠∥◎≡↗⇗○⏤Ø∅]/u', $text);
+        }));
+
+        if (empty($dimensionLike)) {
+            return response()->json(['candidates' => [], 'message' => 'No dimensional text found']);
+        }
+
+        $texts = array_map(fn ($b) => $b['text'], $dimensionLike);
+
+        try {
+            $classifications = $this->ocr->classifyBatch($texts);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'AI classifier unreachable: '.$e->getMessage()], 503);
+        }
+
+        // Stitch each classification back to its bbox + compute x_pct/y_pct
+        $width = (int) ($page->ocr_text['width'] ?? $page->width ?? 1);
+        $height = (int) ($page->ocr_text['height'] ?? $page->height ?? 1);
+
+        $candidates = [];
+        foreach ($dimensionLike as $i => $block) {
+            $cls = $classifications[$i] ?? null;
+            if (! $cls) {
+                continue;
+            }
+            // Skip pure-note fallbacks with zero confidence
+            if (($cls['confidence'] ?? 0) < 0.3) {
+                continue;
+            }
+
+            [$x, $y, $w, $h] = $block['bbox'];
+            $candidates[] = [
+                'source_text' => $block['text'],
+                'ocr_confidence' => $block['confidence'] ?? null,
+                'x_pct' => $width > 0 ? round((($x + $w / 2) / $width) * 100, 4) : 0,
+                'y_pct' => $height > 0 ? round((($y + $h / 2) / $height) * 100, 4) : 0,
+                'bbox' => $block['bbox'],
+                'char_type' => $cls['char_type'] ?? 'note',
+                'nominal' => $cls['nominal'] ?? null,
+                'upper_tolerance' => $cls['upper_tolerance'] ?? null,
+                'lower_tolerance' => $cls['lower_tolerance'] ?? null,
+                'unit' => $cls['unit'] ?? null,
+                'gdt_symbol' => $cls['gdt_symbol'] ?? null,
+                'gdt_datums' => $cls['gdt_datums'] ?? [],
+                'finish_value' => $cls['finish_value'] ?? null,
+                'finish_unit' => $cls['finish_unit'] ?? null,
+                'confidence' => $cls['confidence'] ?? 0,
+            ];
+        }
+
+        // Sort by confidence desc so inspector sees best matches first
+        usort($candidates, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
+
+        return response()->json([
+            'candidates' => $candidates,
+            'page_size' => ['width' => $width, 'height' => $height],
+        ]);
+    }
+
+    /**
+     * Bulk-accept selected AI candidates as real balloons + characteristics.
+     */
+    public function bulkAccept(Request $request, int $planId): JsonResponse
+    {
+        $this->checkPermission('plans.edit');
+
+        $plan = InspectionPlan::findOrFail($planId);
+
+        $data = $request->validate([
+            'fai_document_id' => 'required|integer|exists:drawings,id',
+            'page_number' => 'required|integer|min:1',
+            'candidates' => 'required|array|min:1',
+            'candidates.*.x_pct' => 'required|numeric|min:0|max:100',
+            'candidates.*.y_pct' => 'required|numeric|min:0|max:100',
+            'candidates.*.char_type' => 'required|in:linear,diameter,radius,angle,gdt,surface_finish,note',
+            'candidates.*.source_text' => 'nullable|string|max:500',
+            'candidates.*.confidence' => 'nullable|numeric|min:0|max:1',
+            'candidates.*.nominal' => 'nullable|numeric',
+            'candidates.*.upper_tolerance' => 'nullable|numeric',
+            'candidates.*.lower_tolerance' => 'nullable|numeric',
+            'candidates.*.unit' => 'nullable|string|max:20',
+            'candidates.*.gdt_symbol' => 'nullable|string|max:10',
+        ]);
+
+        $doc = Drawing::where('id', $data['fai_document_id'])
+            ->where('plan_id', $plan->id)
+            ->firstOrFail();
+
+        $created = DB::transaction(function () use ($plan, $data, $doc, $request) {
+            $userId = $request->user()->id;
+            $startNum = ($plan->balloons()->max('balloon_number') ?? 0) + 1;
+            $rows = [];
+
+            foreach ($data['candidates'] as $i => $c) {
+                $number = $startNum + $i;
+
+                $balloon = DrawingBalloon::create([
+                    'plan_id' => $plan->id,
+                    'fai_document_id' => $doc->id,
+                    'balloon_number' => $number,
+                    'page_number' => $data['page_number'],
+                    'x_pct' => $c['x_pct'],
+                    'y_pct' => $c['y_pct'],
+                    'char_type' => $c['char_type'],
+                    'source' => 'ai',
+                    'confidence' => $c['confidence'] ?? null,
+                    'source_text' => $c['source_text'] ?? null,
+                    'accepted_at' => now(),
+                    'created_by' => $userId,
+                ]);
+
+                // Create the linked characteristic with AI-suggested values
+                $char = FaiCharacteristic::create([
+                    'plan_id' => $plan->id,
+                    'balloon_number' => $number,
+                    'char_type' => $c['char_type'],
+                    'nominal' => $c['nominal'] ?? null,
+                    'upper_tolerance' => $c['upper_tolerance'] ?? null,
+                    'lower_tolerance' => $c['lower_tolerance'] ?? null,
+                    'unit' => $c['unit'] ?? null,
+                    'gdt_symbol' => $c['gdt_symbol'] ?? null,
+                    'use_default_tolerance' => false,
+                    'sort_order' => $number,
+                ]);
+
+                $char->requirement_string = $this->formatter->format($char->toArray());
+                $char->save();
+
+                $balloon->characteristic_id = $char->id;
+                $balloon->save();
+
+                $rows[] = $balloon->load('characteristic');
+            }
+
+            return $rows;
+        });
+
+        $plan->recountStats();
+
+        AuditLog::record('balloon.bulk_accepted_ai', [
+            'subject_type' => InspectionPlan::class,
+            'subject_id' => $plan->id,
+            'meta' => ['count' => count($created)],
+        ]);
+
+        return response()->json(['balloons' => $created, 'count' => count($created)], 201);
     }
 
     private function checkPermission(string $permission): void

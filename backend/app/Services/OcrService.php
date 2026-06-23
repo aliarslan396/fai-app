@@ -69,6 +69,40 @@ class OcrService
         }
     }
 
+    /**
+     * Classify a batch of OCR text snippets via the Ollama-backed classifier.
+     *
+     * @param  string[]  $texts
+     * @return array<int, array<string, mixed>>
+     */
+    public function classifyBatch(array $texts): array
+    {
+        if (empty($texts)) {
+            return [];
+        }
+
+        try {
+            $resp = $this->client()
+                ->timeout(600)  // llama3.2:3b on CPU can be ~5 sec/snippet
+                ->asJson()
+                ->post('/classify-batch', ['texts' => array_values($texts)]);
+
+            if (! $resp->successful()) {
+                throw new RuntimeException(
+                    'OCR classify error '.$resp->status().': '.substr($resp->body(), 0, 500)
+                );
+            }
+
+            return $resp->json('results') ?? [];
+        } catch (\Throwable $e) {
+            Log::error('OCR classifyBatch failed', [
+                'count' => count($texts),
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
     private function client(): PendingRequest
     {
         $base = config('services.ocr.url', env('OCR_SERVICE_URL', 'http://ocr:8001'));

@@ -27,6 +27,8 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image
 from pydantic import BaseModel
 
+from classifier import classify, health as classifier_health
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("fai-ocr")
 
@@ -63,9 +65,34 @@ def health():
             "status": "ok",
             "tesseract": str(version),
             "opencv": cv2.__version__,
+            "ollama": classifier_health(),
         }
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=503, detail=str(e))
+
+
+# ---------- Classification (Ollama-backed) ----------
+
+class ClassifyRequest(BaseModel):
+    text: str
+
+
+class ClassifyBatchRequest(BaseModel):
+    texts: list[str]
+
+
+@app.post("/classify")
+def classify_one(req: ClassifyRequest):
+    """Classify a single OCR text snippet into structured char fields."""
+    return classify(req.text)
+
+
+@app.post("/classify-batch")
+def classify_batch(req: ClassifyBatchRequest):
+    """Sequentially classify multiple snippets. Returns list in input order."""
+    if len(req.texts) > 100:
+        raise HTTPException(status_code=400, detail="max 100 snippets per batch")
+    return {"results": [classify(t) for t in req.texts]}
 
 
 # ---------- Preprocess ----------

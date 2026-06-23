@@ -37,7 +37,7 @@ jobs:
           git reset --hard origin/main
           echo "==> Now on $(git rev-parse --short HEAD)"
 
-          COMPOSE="docker compose -f docker-compose.prod.yml"
+          COMPOSE="docker compose -f docker-compose.prod.yml -f docker-compose.ollama.yml"
 
           echo "==> Detect Dockerfile changes"
           if git diff --name-only HEAD@{1} HEAD 2>/dev/null | grep -qE '^(docker/|.*Dockerfile)'; then
@@ -45,6 +45,26 @@ jobs:
             $COMPOSE build backend queue
             $COMPOSE up -d backend queue
             sleep 5
+          fi
+
+          echo "==> Ensure Ollama service running"
+          $COMPOSE up -d ollama
+          # Wait up to 60s for Ollama HTTP API to respond
+          for i in 1 2 3 4 5 6; do
+            if $COMPOSE exec -T ollama ollama list >/dev/null 2>&1; then
+              echo "Ollama ready"
+              break
+            fi
+            echo "Waiting for Ollama (attempt $i)..."
+            sleep 10
+          done
+
+          echo "==> Ensure llama3.2:3b model pulled"
+          if $COMPOSE exec -T ollama ollama list 2>/dev/null | grep -q "llama3.2:3b"; then
+            echo "Model llama3.2:3b already present"
+          else
+            echo "Pulling llama3.2:3b (~2 GB, one-time)..."
+            $COMPOSE exec -T ollama ollama pull llama3.2:3b </dev/null
           fi
 
           echo "==> Backend: composer install"
