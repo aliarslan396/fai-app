@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   ArrowLeft, MousePointer, Crosshair, ListOrdered, Upload, Loader2, X, FileText,
-  ZoomIn, ZoomOut, Maximize2,
+  ZoomIn, ZoomOut, Maximize2, Sparkles,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,7 @@ import {
   type Characteristic,
   type CharType,
 } from "@/components/characteristic-panel"
+import { AiCandidatesPanel } from "@/components/ai-candidates-panel"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
 import { useAuthStore } from "@/lib/auth-store"
@@ -89,6 +90,7 @@ export default function PlanWorkspacePage() {
   const [scale, setScale] = useState(0.5)
   const [mode, setMode] = useState<Mode>("view")
   const [selectedBalloon, setSelectedBalloon] = useState<Balloon | null>(null)
+  const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [renumbering, setRenumbering] = useState(false)
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
@@ -361,6 +363,19 @@ export default function PlanWorkspacePage() {
               <Maximize2 className="h-3.5 w-3.5" />
             </Button>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSelectedBalloon(null)
+              setAiPanelOpen(true)
+            }}
+            disabled={!canEdit || !activeDoc}
+            title="AI scans this page for dimensional callouts and proposes balloons"
+          >
+            <Sparkles className="mr-1 h-3.5 w-3.5" />
+            Auto-detect
+          </Button>
           <Button variant="outline" size="sm" onClick={handleRenumber} disabled={!canEdit || renumbering || balloons.length === 0}>
             {renumbering ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <ListOrdered className="mr-1 h-3.5 w-3.5" />}
             Renumber
@@ -513,9 +528,17 @@ export default function PlanWorkspacePage() {
           )}
         </main>
 
-        {/* Right panel: Characteristic */}
+        {/* Right panel: AI candidates OR characteristic */}
         <aside className="hidden w-[340px] shrink-0 flex-col border-l bg-card/30 lg:flex">
-          {selectedBalloon ? (
+          {aiPanelOpen ? (
+            <AiCandidatesPanel
+              planId={plan.id}
+              drawingId={activeDocId}
+              pageNumber={activePage}
+              onClose={() => setAiPanelOpen(false)}
+              onAccepted={fetchPlan}
+            />
+          ) : selectedBalloon ? (
             <>
               <div className="flex items-center justify-between border-b px-3 py-2">
                 <span className="text-xs font-semibold uppercase text-muted-foreground">
