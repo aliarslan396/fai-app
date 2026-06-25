@@ -200,9 +200,10 @@ class BalloonController extends Controller
 
     /**
      * AI auto-detect candidates for a drawing page.
-     * Reads stored OCR text blocks → classifies each via Ollama → returns
-     * ranked candidate list WITHOUT creating balloons. Frontend renders
-     * the candidates; inspector accepts the ones they want via bulkAccept.
+     * Reads stored OCR text blocks → merges adjacent blocks on the same
+     * line → classifies each merged group via Ollama → returns candidates
+     * split into auto-accept (high confidence) and review-needed
+     * (medium confidence) buckets. Low confidence + skip results hidden.
      */
     public function autoDetect(int $planId, int $drawingId, int $pageNumber): JsonResponse
     {
@@ -226,17 +227,42 @@ class BalloonController extends Controller
 
         $blocks = $page->ocr_text['blocks'];
 
-        // Keep only blocks that look dimensional: contain digits OR a GD&T glyph
-        $dimensionLike = array_values(array_filter($blocks, function ($b) {
+        // Step 1: Merge adjacent blocks on the same horizontal line.
+        // Tesseract returns "1.500", "±0.005", "in" as separate blocks.
+        // We need them as a single merged string for the LLM.
+        $merged = $this->mergeAdjacentBlocks($blocks);
+
+        // Step 2: Keep only blocks that look dimensional.
+        $dimensionLike = array_values(array_filter($merged, function ($b) {
             $text = (string) ($b['text'] ?? '');
-            if (preg_match('/\d/', $text)) {
+            // Has digit OR GD&T glyph
+            if (preg_match('/[⊕⊥⏥⌭⌒⌓∠∥◎≡↗⇗○⏤Ø∅]/u', $text)) {
                 return true;
             }
-            return (bool) preg_match('/[⊕⊥⏥⌭⌒⌓∠∥◎≡↗⇗○⏤Ø∅]/u', $text);
+            if (! preg_match('/\d/', $text)) {
+                return false;
+            }
+            // Drop very short pure-numeric strings (zone markers)
+            if (preg_match('/^\s*\d{1,3}\s*$/', $text)) {
+                return false;
+            }
+            // Drop "1/1", "2/6" page indicators
+            if (preg_match('/^\s*\d+\s*\/\s*\d+\s*$/', $text)) {
+                return false;
+            }
+            // Drop "2X", "4X" multipliers
+            if (preg_match('/^\s*\d+\s*[xX]\s*$/', $text)) {
+                return false;
+            }
+            return true;
         }));
 
         if (empty($dimensionLike)) {
-            return response()->json(['candidates' => [], 'message' => 'No dimensional text found']);
+            return response()->json([
+                'auto_accept' => [],
+                'review' => [],
+                'message' => 'No dimensional text found',
+            ]);
         }
 
         $texts = array_map(fn ($b) => $b['text'], $dimensionLike);
@@ -247,29 +273,33 @@ class BalloonController extends Controller
             return response()->json(['error' => 'AI classifier unreachable: '.$e->getMessage()], 503);
         }
 
-        // Stitch each classification back to its bbox + compute x_pct/y_pct
         $width = (int) ($page->ocr_text['width'] ?? $page->width ?? 1);
         $height = (int) ($page->ocr_text['height'] ?? $page->height ?? 1);
 
-        $candidates = [];
+        $autoAccept = [];
+        $review = [];
+
         foreach ($dimensionLike as $i => $block) {
             $cls = $classifications[$i] ?? null;
             if (! $cls) {
                 continue;
             }
-            // Skip pure-note fallbacks with zero confidence
-            if (($cls['confidence'] ?? 0) < 0.3) {
+
+            // Hide skip + low-confidence completely
+            $ctype = $cls['char_type'] ?? 'skip';
+            $confidence = (float) ($cls['confidence'] ?? 0);
+            if ($ctype === 'skip' || $confidence < 0.5) {
                 continue;
             }
 
             [$x, $y, $w, $h] = $block['bbox'];
-            $candidates[] = [
+            $candidate = [
                 'source_text' => $block['text'],
                 'ocr_confidence' => $block['confidence'] ?? null,
                 'x_pct' => $width > 0 ? round((($x + $w / 2) / $width) * 100, 4) : 0,
                 'y_pct' => $height > 0 ? round((($y + $h / 2) / $height) * 100, 4) : 0,
                 'bbox' => $block['bbox'],
-                'char_type' => $cls['char_type'] ?? 'note',
+                'char_type' => $ctype,
                 'nominal' => $cls['nominal'] ?? null,
                 'upper_tolerance' => $cls['upper_tolerance'] ?? null,
                 'lower_tolerance' => $cls['lower_tolerance'] ?? null,
@@ -278,17 +308,130 @@ class BalloonController extends Controller
                 'gdt_datums' => $cls['gdt_datums'] ?? [],
                 'finish_value' => $cls['finish_value'] ?? null,
                 'finish_unit' => $cls['finish_unit'] ?? null,
-                'confidence' => $cls['confidence'] ?? 0,
+                'is_reference' => $cls['is_reference'] ?? false,
+                'confidence' => $confidence,
             ];
+
+            // Bucket: auto-accept >=0.85, review 0.5-0.85
+            if ($confidence >= 0.85) {
+                $autoAccept[] = $candidate;
+            } else {
+                $review[] = $candidate;
+            }
         }
 
-        // Sort by confidence desc so inspector sees best matches first
-        usort($candidates, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
+        usort($autoAccept, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
+        usort($review, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
 
         return response()->json([
-            'candidates' => $candidates,
+            'auto_accept' => $autoAccept,
+            'review' => $review,
             'page_size' => ['width' => $width, 'height' => $height],
+            'stats' => [
+                'total_ocr_blocks' => count($blocks),
+                'merged_blocks' => count($merged),
+                'dimension_like' => count($dimensionLike),
+                'auto_accepted' => count($autoAccept),
+                'needs_review' => count($review),
+            ],
         ]);
+    }
+
+    /**
+     * Merge OCR blocks that sit on the same horizontal line within close
+     * horizontal proximity. Tesseract splits "1.500 ±0.005 in" into 3
+     * separate blocks; the LLM needs them as one string to classify properly.
+     *
+     * Rule of thumb: two blocks merge if
+     *   - vertical midpoints overlap within 60% of the taller block's height
+     *   - horizontal gap between them is less than 2x the average char width
+     *
+     * @param  array<int, array{text:string, bbox:array<int>, confidence:float}>  $blocks
+     * @return array<int, array{text:string, bbox:array<int>, confidence:float}>
+     */
+    private function mergeAdjacentBlocks(array $blocks): array
+    {
+        if (empty($blocks)) {
+            return [];
+        }
+
+        // Sort by y then x for predictable merging
+        usort($blocks, function ($a, $b) {
+            $ay = $a['bbox'][1] ?? 0;
+            $by = $b['bbox'][1] ?? 0;
+            if (abs($ay - $by) < 5) {
+                return ($a['bbox'][0] ?? 0) <=> ($b['bbox'][0] ?? 0);
+            }
+            return $ay <=> $by;
+        });
+
+        $merged = [];
+        foreach ($blocks as $block) {
+            $bbox = $block['bbox'] ?? [0, 0, 0, 0];
+            $text = (string) ($block['text'] ?? '');
+            $conf = (float) ($block['confidence'] ?? 0);
+            if ($text === '') {
+                continue;
+            }
+
+            $last = end($merged) ?: null;
+            if ($last !== null && $this->canMerge($last, $block)) {
+                // Merge into the last group
+                $idx = array_key_last($merged);
+                $merged[$idx]['text'] = trim($last['text']).' '.trim($text);
+                $merged[$idx]['bbox'] = $this->mergeBbox($last['bbox'], $bbox);
+                $merged[$idx]['confidence'] = min($last['confidence'], $conf);
+            } else {
+                $merged[] = [
+                    'text' => $text,
+                    'bbox' => $bbox,
+                    'confidence' => $conf,
+                ];
+            }
+        }
+
+        return $merged;
+    }
+
+    private function canMerge(array $a, array $b): bool
+    {
+        $aBox = $a['bbox'] ?? [0, 0, 0, 0];
+        $bBox = $b['bbox'] ?? [0, 0, 0, 0];
+
+        [$ax, $ay, $aw, $ah] = $aBox;
+        [$bx, $by, $bw, $bh] = $bBox;
+
+        // Vertical line check — midpoints within 50% of taller block height
+        $aMid = $ay + $ah / 2;
+        $bMid = $by + $bh / 2;
+        $tol = max($ah, $bh) * 0.5;
+        if (abs($aMid - $bMid) > $tol) {
+            return false;
+        }
+
+        // Horizontal gap check — must be near each other
+        $aRight = $ax + $aw;
+        $gap = $bx - $aRight;
+        $avgCharW = max($aw / max(strlen((string) $a['text']), 1), 5);
+        if ($gap < 0) {
+            return true;  // overlapping
+        }
+        if ($gap > $avgCharW * 2.5) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function mergeBbox(array $a, array $b): array
+    {
+        [$ax, $ay, $aw, $ah] = $a;
+        [$bx, $by, $bw, $bh] = $b;
+        $left = min($ax, $bx);
+        $top = min($ay, $by);
+        $right = max($ax + $aw, $bx + $bw);
+        $bottom = max($ay + $ah, $by + $bh);
+        return [$left, $top, $right - $left, $bottom - $top];
     }
 
     /**
