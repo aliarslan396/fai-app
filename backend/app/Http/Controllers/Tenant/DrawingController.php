@@ -214,6 +214,34 @@ class DrawingController extends Controller
     }
 
     /**
+     * Re-run OCR on a single page with the current sidecar settings.
+     * Clears cached ocr_text + ocr_completed_at, then dispatches the job
+     * so the queue worker re-processes with whatever upscale/multi-PSM
+     * settings the OCR sidecar applies by default now.
+     */
+    public function reOcrPage(int $id, int $page): JsonResponse
+    {
+        $this->checkPermission('drawings.upload');
+
+        $pageRow = DrawingPage::where('drawing_id', $id)
+            ->where('page_number', $page)
+            ->firstOrFail();
+
+        $pageRow->update([
+            'ocr_text' => null,
+            'ocr_completed_at' => null,
+        ]);
+
+        $tenantId = tenant('id');
+        \App\Jobs\RunOcrOnDrawingPage::dispatch($tenantId, $pageRow->id);
+
+        return response()->json([
+            'message' => 'Re-OCR queued. Refresh in 30-60s.',
+            'page_id' => $pageRow->id,
+        ]);
+    }
+
+    /**
      * Download the original uploaded file.
      */
     public function download(int $id): BinaryFileResponse

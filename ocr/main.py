@@ -32,7 +32,7 @@ from classifier import classify, health as classifier_health
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("fai-ocr")
 
-app = FastAPI(title="FAI OCR Service", version="0.2.0")
+app = FastAPI(title="FAI OCR Service", version="0.3.0")
 
 
 # ---------- Response models ----------
@@ -159,7 +159,27 @@ def preprocess_image(image_bgr: np.ndarray, mode: str = "auto") -> tuple[np.ndar
 
 # ---------- OCR ----------
 
-def run_tesseract(image: np.ndarray, lang: str = "eng", psm: int = 6, min_confidence: float = 0.5) -> list[TextBlock]:
+# Tessearact char whitelist for the numeric-focused pass. Permissive so we
+# don't break legit text like "Ra μin"; tight enough to discourage garbage.
+ENGINEERING_WHITELIST = (
+    "0123456789"
+    ".,-+/×x°±"
+    "ØRr⌀"
+    "⊕⊥⏥⌭⌒⌓∠∥◎≡↗⇗○⏤"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "abcdefghijklmnopqrstuvwxyz"
+    "()[]{}"
+    " "
+)
+
+
+def run_tesseract(
+    image: np.ndarray,
+    lang: str = "eng",
+    psm: int = 6,
+    min_confidence: float = 0.5,
+    whitelist: str | None = None,
+) -> list[TextBlock]:
     """
     Run Tesseract with TSV output to get word-level positions.
 
@@ -167,8 +187,17 @@ def run_tesseract(image: np.ndarray, lang: str = "eng", psm: int = 6, min_confid
       - 6 = single uniform block (default)
       - 11 = sparse text (good for scattered dimensions)
       - 12 = sparse text with OSD
+
+    whitelist: optional char whitelist (tessedit_char_whitelist). Use for
+    numeric-focused passes that should reject most letters.
     """
-    config = f"--oem 3 --psm {psm}"
+    config_parts = [f"--oem 3 --psm {psm}"]
+    if whitelist:
+        # Escape characters that have meaning in the tesseract config syntax
+        safe = whitelist.replace('"', '')
+        config_parts.append(f'-c tessedit_char_whitelist="{safe}"')
+    config = " ".join(config_parts)
+
     tsv = pytesseract.image_to_data(
         image,
         lang=lang,
@@ -208,15 +237,47 @@ def run_tesseract(image: np.ndarray, lang: str = "eng", psm: int = 6, min_confid
     return blocks
 
 
+def upscale_image(image: np.ndarray, factor: float) -> np.ndarray:
+    """Upscale image with cubic interpolation. Equivalent to higher-DPI render
+    for OCR purposes — Tesseract reads tiny text MUCH better at 2x size."""
+    if factor <= 1.0:
+        return image
+    h, w = image.shape[:2]
+    new_w = int(w * factor)
+    new_h = int(h * factor)
+    return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+
+
+def _block_key(b: TextBlock, tol_px: int = 10) -> tuple:
+    """Dedup key — blocks at roughly same position with same text are duplicates."""
+    x, y, w, h = b.bbox
+    return (b.text.strip().lower(), x // tol_px, y // tol_px)
+
+
+def merge_block_runs(*runs: list[TextBlock]) -> list[TextBlock]:
+    """Union multiple OCR passes' results, deduping near-identical blocks.
+    Keeps the highest-confidence copy when duplicates exist."""
+    by_key: dict[tuple, TextBlock] = {}
+    for run in runs:
+        for b in run:
+            k = _block_key(b)
+            existing = by_key.get(k)
+            if existing is None or b.confidence > existing.confidence:
+                by_key[k] = b
+    return list(by_key.values())
+
+
 # ---------- Main endpoint ----------
 
 @app.post("/process", response_model=OcrResult)
 async def process(
     file: UploadFile = File(..., description="Page image (PNG/JPG)"),
     preprocess: str = Form("auto", description="auto | none | aggressive"),
-    psm: int = Form(6, description="Tesseract page segmentation mode"),
+    psm: int = Form(6, description="Tesseract PSM (legacy; ignored when multi=true)"),
     min_confidence: float = Form(0.5, description="Drop blocks below this 0.0-1.0 confidence"),
     lang: str = Form("eng"),
+    scale: float = Form(2.0, description="Upscale factor before OCR. 2.0 = approx 300 DPI from 150 DPI source"),
+    multi: bool = Form(True, description="Run multiple PSM passes + dedupe. Boosts recall on engineering drawings"),
 ):
     if preprocess not in ("auto", "none", "aggressive"):
         raise HTTPException(status_code=400, detail="preprocess must be auto|none|aggressive")
@@ -237,19 +298,55 @@ async def process(
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"could not decode image: {e}")
 
-    h, w = bgr.shape[:2]
-    log.info("OCR: received %sx%s image, %d bytes", w, h, len(contents))
+    orig_h, orig_w = bgr.shape[:2]
+    log.info("OCR: received %sx%s image, %d bytes (scale=%s, multi=%s)",
+             orig_w, orig_h, len(contents), scale, multi)
 
     processed, preprocess_info = preprocess_image(bgr, preprocess)
-    blocks = run_tesseract(processed, lang=lang, psm=psm, min_confidence=min_confidence)
+
+    # Fix 1 — Upscale for better small-text recall
+    scaled = upscale_image(processed, scale)
+    preprocess_info["scale_factor"] = scale
+    preprocess_info["scaled_shape"] = list(scaled.shape)
+
+    # Fix 2 — Multi-PSM passes; Fix 4 — engineering whitelist on numeric pass
+    if multi:
+        blocks_6 = run_tesseract(scaled, lang=lang, psm=6, min_confidence=min_confidence)
+        blocks_11 = run_tesseract(scaled, lang=lang, psm=11, min_confidence=min_confidence)
+        # Numeric-focused pass — catches dim text the general pass missed
+        blocks_num = run_tesseract(
+            scaled, lang=lang, psm=11, min_confidence=min_confidence,
+            whitelist=ENGINEERING_WHITELIST,
+        )
+        merged = merge_block_runs(blocks_6, blocks_11, blocks_num)
+        preprocess_info["psm_passes"] = {
+            "psm6": len(blocks_6),
+            "psm11": len(blocks_11),
+            "psm11_whitelist": len(blocks_num),
+            "after_dedup": len(merged),
+        }
+        blocks = merged
+    else:
+        blocks = run_tesseract(scaled, lang=lang, psm=psm, min_confidence=min_confidence)
+
+    # Scale bboxes back to original image coords so client coords stay correct
+    if scale > 1.0:
+        for b in blocks:
+            x, y, w_, h_ = b.bbox
+            b.bbox = [
+                int(round(x / scale)),
+                int(round(y / scale)),
+                int(round(w_ / scale)),
+                int(round(h_ / scale)),
+            ]
 
     raw_text = "\n".join(b.text for b in blocks)
     elapsed_ms = int((time.time() - start) * 1000)
     log.info("OCR: %d blocks extracted in %d ms", len(blocks), elapsed_ms)
 
     return OcrResult(
-        width=w,
-        height=h,
+        width=orig_w,
+        height=orig_h,
         blocks=blocks,
         raw_text=raw_text,
         processing_ms=elapsed_ms,

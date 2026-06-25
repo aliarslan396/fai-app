@@ -214,6 +214,7 @@ Route::prefix('api/v1')
                 Route::get('{id}/pages/{page}/image', [DrawingController::class, 'pageImage']);
                 Route::get('{id}/pages/{page}/thumbnail', [DrawingController::class, 'pageThumbnail']);
                 Route::get('{id}/pages/{page}/ocr', [DrawingController::class, 'pageOcr']);
+                Route::post('{id}/pages/{page}/re-ocr', [DrawingController::class, 'reOcrPage']);
             });
         });
     });
