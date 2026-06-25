@@ -68,7 +68,24 @@ _SKIP_PATTERNS = [
     re.compile(r"^SHEET\b", re.I),
     re.compile(r"^DWG\b", re.I),                     # drawing number
     re.compile(r"^REV\b", re.I),                     # revision marker
+    # Dates — common in title blocks "11/12/2005", "2026-06-25", "12-NOV-2005"
+    re.compile(r"^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"),
+    re.compile(r"^\d{4}[/-]\d{1,2}[/-]\d{1,2}\b"),
+    re.compile(r"^\d{1,2}[/-][A-Z]{3}[/-]\d{2,4}\b", re.I),
 ]
+
+# Title-block / non-dim keywords. Anywhere in the string, even mid-word
+# (so "GPEMP0100044" matches via the GPEMP prefix even with no boundary).
+_TITLE_KEYWORDS = re.compile(
+    r"(TUBE|ASSEMBLY|ASSY|DRAWING|RELEASE|REVISION|"
+    r"ENGINEERING|APPROVED|CHECKED|"
+    r"MATERIAL|FINISH|TREATMENT|HEAT|PROCESS|"
+    r"NEXT\s+USED|USED\s+ON|TITLE|"
+    r"UNLESS|OTHERWISE|SPECIFIED|"
+    r"DIMENSIONS|TOLERANCES|"
+    r"GPEMP|GPE-|PIP\s|STM6|CONTRACT|FRM)",
+    re.I,
+)
 
 
 def should_skip(text: str) -> bool:
@@ -90,6 +107,19 @@ def should_skip(text: str) -> bool:
     if not re.search(r"\d", t):
         return True
 
+    # Title-block keywords anywhere in the string (merged garbage often
+    # contains "TUBE", "ASSEMBLY", drawing-number fragments like "GPEMP" etc.)
+    if _TITLE_KEYWORDS.search(t):
+        return True
+
+    # Too many letters relative to length = wordy text mistakenly merged with
+    # a dim. A real dim like "1.500 ±0.005 in" has ~30-50% letters; merged
+    # garbage like "(1.50) (301) (G01) 2 TUBE TUBE ASS" has way more.
+    letters = sum(1 for c in t if c.isalpha())
+    digits = sum(1 for c in t if c.isdigit())
+    if letters > 6 and digits > 0 and letters / max(len(t), 1) > 0.40:
+        return True
+
     # Standalone integer 1-3 chars with no decimal, no unit, no operator → zone label
     # e.g. "4", "7", "48", "203", "540" — usually zone markers
     if re.fullmatch(r"\d{1,3}", t):
@@ -102,6 +132,27 @@ def should_skip(text: str) -> bool:
         if "." not in inner and len(inner) <= 3:
             return True  # "(208)" type — skip
         # "(1.50)" → don't skip, it's a reference dim
+
+    # Length cap — real dim strings are short. Anything over ~50 chars is
+    # almost certainly merged garbage (the long source text we saw was
+    # "11/12/2005 LM_J55_SIZE.FRM Drawi...").
+    if len(t) > 50:
+        return True
+
+    # Reject if text has 3+ parenthesized groups (merged title clutter like
+    # "(1.50) (301) (G01)") OR mixed bracket types ("(201) 20 [22 |] ...")
+    open_brackets = len(re.findall(r"[\(\[\{]", t))
+    if open_brackets >= 3:
+        return True
+    # Mixed bracket types = different semantic groups jammed together
+    has_paren = "(" in t
+    has_square = "[" in t
+    if has_paren and has_square:
+        return True
+
+    # Multiple multiplier prefixes ("3X 3X.", "2X 2X") = title fragments
+    if len(re.findall(r"\b\d+\s*[xX]\b", t)) >= 2:
+        return True
 
     return False
 

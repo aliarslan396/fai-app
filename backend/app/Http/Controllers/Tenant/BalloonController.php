@@ -401,22 +401,57 @@ class BalloonController extends Controller
         [$ax, $ay, $aw, $ah] = $aBox;
         [$bx, $by, $bw, $bh] = $bBox;
 
-        // Vertical line check — midpoints within 50% of taller block height
+        $aText = (string) $a['text'];
+        $bText = (string) $b['text'];
+
+        // Vertical line check — midpoints within 30% of taller block height
+        // (tightened from 50% — engineering drawings have lots of stacked text)
         $aMid = $ay + $ah / 2;
         $bMid = $by + $bh / 2;
-        $tol = max($ah, $bh) * 0.5;
+        $tol = max($ah, $bh) * 0.3;
         if (abs($aMid - $bMid) > $tol) {
+            return false;
+        }
+
+        // Character height mismatch — different size text is usually different
+        // semantic groups (title block big vs dim small). Reject merge if
+        // heights differ by >40%.
+        $hRatio = max($ah, $bh) / max(min($ah, $bh), 1);
+        if ($hRatio > 1.4) {
             return false;
         }
 
         // Horizontal gap check — must be near each other
         $aRight = $ax + $aw;
         $gap = $bx - $aRight;
-        $avgCharW = max($aw / max(strlen((string) $a['text']), 1), 5);
-        if ($gap < 0) {
-            return true;  // overlapping
+        $avgCharW = max($aw / max(strlen($aText), 1), 5);
+
+        // Tightened from 2.5 -> 1.5 char widths. Real dim parts like "1.500"
+        // and "±0.005" sit very close; title-block fragments sit further apart.
+        if ($gap > $avgCharW * 1.5) {
+            return false;
         }
-        if ($gap > $avgCharW * 2.5) {
+        if ($gap < 0) {
+            // Overlapping is fine — but cap combined length to avoid runaway
+            // merges across columns.
+            return strlen($aText.' '.$bText) <= 60;
+        }
+
+        // Don't grow merged text past 60 chars — real dim callouts are short.
+        if (strlen($aText.' '.$bText) > 60) {
+            return false;
+        }
+
+        // If one side is mostly letters (word) and the other is mostly digits,
+        // skip the merge — they're semantically different.
+        $aLetters = preg_match_all('/[A-Za-z]/', $aText);
+        $aDigits = preg_match_all('/\d/', $aText);
+        $bLetters = preg_match_all('/[A-Za-z]/', $bText);
+        $bDigits = preg_match_all('/\d/', $bText);
+
+        $aIsWordy = $aLetters > 0 && $aDigits === 0 && strlen($aText) > 3;
+        $bIsWordy = $bLetters > 0 && $bDigits === 0 && strlen($bText) > 3;
+        if ($aIsWordy !== $bIsWordy) {
             return false;
         }
 
