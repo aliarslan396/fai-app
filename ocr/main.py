@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import time
 
 import cv2
@@ -32,7 +33,7 @@ from classifier import classify, health as classifier_health
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("fai-ocr")
 
-app = FastAPI(title="FAI OCR Service", version="0.3.0")
+app = FastAPI(title="FAI OCR Service", version="0.3.1")
 
 
 # ---------- Response models ----------
@@ -237,15 +238,28 @@ def run_tesseract(
     return blocks
 
 
-def upscale_image(image: np.ndarray, factor: float) -> np.ndarray:
-    """Upscale image with cubic interpolation. Equivalent to higher-DPI render
-    for OCR purposes — Tesseract reads tiny text MUCH better at 2x size."""
+MAX_OCR_MEGAPIXELS = float(os.environ.get("MAX_OCR_MEGAPIXELS", "30"))
+
+
+def upscale_image(image: np.ndarray, factor: float) -> tuple[np.ndarray, float]:
+    """Upscale image with cubic interpolation, but auto-cap so the final
+    pixel count stays below MAX_OCR_MEGAPIXELS. Critical on small droplets
+    (4 GB RAM) — a 2x upscale on an E-size drawing (8250x5100) would push
+    to ~168 MP which OOMs Tesseract.
+
+    Returns (upscaled_image, effective_factor)."""
     if factor <= 1.0:
-        return image
+        return image, 1.0
     h, w = image.shape[:2]
+    mp_now = (h * w) / 1_000_000
+    if mp_now * (factor ** 2) > MAX_OCR_MEGAPIXELS:
+        capped = (MAX_OCR_MEGAPIXELS / mp_now) ** 0.5
+        if capped <= 1.0:
+            return image, 1.0
+        factor = capped
     new_w = int(w * factor)
     new_h = int(h * factor)
-    return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+    return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_CUBIC), factor
 
 
 def _block_key(b: TextBlock, tol_px: int = 10) -> tuple:
@@ -276,7 +290,7 @@ async def process(
     psm: int = Form(6, description="Tesseract PSM (legacy; ignored when multi=true)"),
     min_confidence: float = Form(0.5, description="Drop blocks below this 0.0-1.0 confidence"),
     lang: str = Form("eng"),
-    scale: float = Form(2.0, description="Upscale factor before OCR. 2.0 = approx 300 DPI from 150 DPI source"),
+    scale: float = Form(1.5, description="Upscale factor before OCR. Auto-capped so output stays under MAX_OCR_MEGAPIXELS"),
     multi: bool = Form(True, description="Run multiple PSM passes + dedupe. Boosts recall on engineering drawings"),
 ):
     if preprocess not in ("auto", "none", "aggressive"):
@@ -304,40 +318,48 @@ async def process(
 
     processed, preprocess_info = preprocess_image(bgr, preprocess)
 
-    # Fix 1 — Upscale for better small-text recall
-    scaled = upscale_image(processed, scale)
-    preprocess_info["scale_factor"] = scale
+    # Fix 1 — Upscale for better small-text recall (auto-capped on memory)
+    scaled, effective_scale = upscale_image(processed, scale)
+    preprocess_info["scale_factor_requested"] = scale
+    preprocess_info["scale_factor_effective"] = round(effective_scale, 3)
     preprocess_info["scaled_shape"] = list(scaled.shape)
 
-    # Fix 2 — Multi-PSM passes; Fix 4 — engineering whitelist on numeric pass
+    # Fix 2 — Multi-PSM passes; Fix 4 — engineering whitelist on numeric pass.
+    # Drop the third pass on memory-tight droplets (>20 MP scaled output)
+    # — two passes are enough to catch most missed text without OOM.
+    scaled_mp = (scaled.shape[0] * scaled.shape[1]) / 1_000_000
+    use_third_pass = scaled_mp <= 20
+
     if multi:
         blocks_6 = run_tesseract(scaled, lang=lang, psm=6, min_confidence=min_confidence)
         blocks_11 = run_tesseract(scaled, lang=lang, psm=11, min_confidence=min_confidence)
-        # Numeric-focused pass — catches dim text the general pass missed
-        blocks_num = run_tesseract(
-            scaled, lang=lang, psm=11, min_confidence=min_confidence,
-            whitelist=ENGINEERING_WHITELIST,
-        )
-        merged = merge_block_runs(blocks_6, blocks_11, blocks_num)
-        preprocess_info["psm_passes"] = {
-            "psm6": len(blocks_6),
-            "psm11": len(blocks_11),
-            "psm11_whitelist": len(blocks_num),
-            "after_dedup": len(merged),
-        }
+        runs = [blocks_6, blocks_11]
+        psm_stats = {"psm6": len(blocks_6), "psm11": len(blocks_11)}
+        if use_third_pass:
+            blocks_num = run_tesseract(
+                scaled, lang=lang, psm=11, min_confidence=min_confidence,
+                whitelist=ENGINEERING_WHITELIST,
+            )
+            runs.append(blocks_num)
+            psm_stats["psm11_whitelist"] = len(blocks_num)
+        else:
+            psm_stats["psm11_whitelist"] = "skipped_large_image"
+        merged = merge_block_runs(*runs)
+        psm_stats["after_dedup"] = len(merged)
+        preprocess_info["psm_passes"] = psm_stats
         blocks = merged
     else:
         blocks = run_tesseract(scaled, lang=lang, psm=psm, min_confidence=min_confidence)
 
     # Scale bboxes back to original image coords so client coords stay correct
-    if scale > 1.0:
+    if effective_scale > 1.0:
         for b in blocks:
             x, y, w_, h_ = b.bbox
             b.bbox = [
-                int(round(x / scale)),
-                int(round(y / scale)),
-                int(round(w_ / scale)),
-                int(round(h_ / scale)),
+                int(round(x / effective_scale)),
+                int(round(y / effective_scale)),
+                int(round(w_ / effective_scale)),
+                int(round(h_ / effective_scale)),
             ]
 
     raw_text = "\n".join(b.text for b in blocks)
