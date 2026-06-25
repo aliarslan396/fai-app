@@ -47,6 +47,14 @@ jobs:
             sleep 5
           fi
 
+          echo "==> Detect OCR sidecar changes"
+          if git diff --name-only HEAD@{1} HEAD 2>/dev/null | grep -qE '^ocr/'; then
+            echo "==> OCR code changed — rebuilding ocr image"
+            $COMPOSE build ocr
+            $COMPOSE up -d ocr
+            sleep 5
+          fi
+
           echo "==> Ensure Ollama service running"
           $COMPOSE up -d ollama
           # Wait up to 60s for Ollama HTTP API to respond

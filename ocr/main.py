@@ -32,7 +32,7 @@ from classifier import classify, health as classifier_health
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("fai-ocr")
 
-app = FastAPI(title="FAI OCR Service", version="0.1.0")
+app = FastAPI(title="FAI OCR Service", version="0.2.0")
 
 
 # ---------- Response models ----------
