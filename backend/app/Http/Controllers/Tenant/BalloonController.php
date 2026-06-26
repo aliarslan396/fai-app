@@ -233,8 +233,27 @@ class BalloonController extends Controller
         $merged = $this->mergeAdjacentBlocks($blocks);
 
         // Step 2: Keep only blocks that look dimensional.
-        $dimensionLike = array_values(array_filter($merged, function ($b) {
+        // Also reject blocks in the extreme top/bottom of page (title block
+        // and PDM-export footer) where dim text almost never lives but lots
+        // of garbage does.
+        $pageH = (int) ($page->ocr_text['height'] ?? $page->height ?? 1);
+        $topReject = (int) round($pageH * 0.025);     // top 2.5% = title bar
+        $bottomReject = (int) round($pageH * 0.965);  // bottom 3.5% = footer
+
+        $dimensionLike = array_values(array_filter($merged, function ($b) use ($topReject, $bottomReject) {
             $text = (string) ($b['text'] ?? '');
+            $bbox = $b['bbox'] ?? [0, 0, 0, 0];
+            $blockTop = (int) ($bbox[1] ?? 0);
+            $blockBottom = $blockTop + (int) ($bbox[3] ?? 0);
+
+            // Position filter — strip extreme top/bottom strips
+            if ($blockBottom <= $topReject) {
+                return false;
+            }
+            if ($blockTop >= $bottomReject) {
+                return false;
+            }
+
             // Has digit OR GD&T glyph
             if (preg_match('/[⊕⊥⏥⌭⌒⌓∠∥◎≡↗⇗○⏤Ø∅]/u', $text)) {
                 return true;
@@ -252,6 +271,18 @@ class BalloonController extends Controller
             }
             // Drop "2X", "4X" multipliers
             if (preg_match('/^\s*\d+\s*[xX]\s*$/', $text)) {
+                return false;
+            }
+            // Drop square-bracket find numbers "[22 ]", "[401]"
+            if (preg_match('/^\s*\[\s*\d+\s*\]\s*$/', $text)) {
+                return false;
+            }
+            // Drop comma-separated rev tags "06887, -.26,"
+            if (preg_match('/^\d{4,},\s*-?\.?\d*,/', $text)) {
+                return false;
+            }
+            // Drop cage codes (5-digit pure integers)
+            if (preg_match('/^\d{5}$/', $text)) {
                 return false;
             }
             return true;

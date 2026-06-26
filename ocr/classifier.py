@@ -72,6 +72,36 @@ _SKIP_PATTERNS = [
     re.compile(r"^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"),
     re.compile(r"^\d{4}[/-]\d{1,2}[/-]\d{1,2}\b"),
     re.compile(r"^\d{1,2}[/-][A-Z]{3}[/-]\d{2,4}\b", re.I),
+    # Square-bracket find-number callouts "[22 ]", "[401]", "[15]"
+    re.compile(r"^\s*\[\s*\d+\s*\]\s*$"),
+    # Revision/part marker patterns: "06887, -.26,", "12345, REV-A,"
+    re.compile(r"^\d{4,},\s*-?\.?\d*,"),
+    re.compile(r"^\d{4,},\s*\w*,"),
+    # Drawing footer markers always present in PDM exports
+    re.compile(r"^State\b", re.I),
+    re.compile(r"^Implementation\b", re.I),
+    re.compile(r"^Export\b", re.I),
+    re.compile(r"^Controlled\b", re.I),
+    re.compile(r"^Information\b", re.I),
+    re.compile(r"^Lockheed\b", re.I),
+    re.compile(r"^Martin\b", re.I),
+    re.compile(r"^Boeing\b", re.I),
+    # Times like "17:15:17"
+    re.compile(r"^\d{1,2}:\d{2}:\d{2}$"),
+    re.compile(r"^\d{1,2}:\d{2}$"),
+    # Single mathematical operators / brackets
+    re.compile(r"^[\(\)\[\]\{\}+\-=*<>|]+$"),
+    # Cage codes "06887" alone
+    re.compile(r"^\d{5}$"),
+    # Standalone find-number annotation "FN 22", "FN401"
+    re.compile(r"^FN\s*\d+", re.I),
+    # CAGE / NSN tags
+    re.compile(r"^CAGE\b", re.I),
+    re.compile(r"^NSN\b", re.I),
+    # Part numbers with mixed format
+    re.compile(r"^\d+\.\d+[A-Z]+\d+", re.I),
+    # OCR garbage: text with non-printable or odd char ratios
+    re.compile(r"^[^\w\s.±±°⌀Ø⊕⊥⏥⌭⌒⌓∠∥◎≡↗⇗○⏤()/+\-]{3,}"),
 ]
 
 # Title-block / non-dim keywords. Anywhere in the string, even mid-word
@@ -83,7 +113,13 @@ _TITLE_KEYWORDS = re.compile(
     r"NEXT\s+USED|USED\s+ON|TITLE|"
     r"UNLESS|OTHERWISE|SPECIFIED|"
     r"DIMENSIONS|TOLERANCES|"
-    r"GPEMP|GPE-|PIP\s|STM6|CONTRACT|FRM)",
+    r"GPEMP|GPE-|PIP\s|STM6|CONTRACT|FRM|"
+    r"State|Implementation|"
+    r"PROOF|LOAD|FASTENER|TORQUE|TABLE|"
+    r"CAGE|CODE|SIZE|SCALE|REV|SHEET|"
+    r"SOLAR|ARRAY|HOLDING|FIXTURE|SPREADER|BAR|"
+    r"BLACK|OXIDE|ALLOY|STEEL|EPOXY|ANODIZE|"
+    r"SHCS|HSCS|UNC|UNF|THRU|NOM)",
     re.I,
 )
 
@@ -187,12 +223,25 @@ Strict rules:
 - "63 Ra μin" → surface_finish, finish_value "63", finish_unit "Ra μin"
 - "1.500 ±0.005 in" → linear
 
+TOLERANCE PARSING — aerospace drawings use shorthand:
+- "16.485 .010 .010" or "16.485+.010 .010" → SYMMETRIC ±0.010 (the two
+  identical values after nominal mean ± symmetric). Set upper=0.010, lower=0.010.
+- "29.030 .005" with single value → SYMMETRIC ±0.005. Set upper=0.005, lower=0.005.
+- "1.500 +.010 -.005" → ASYMMETRIC. upper=0.010, lower=0.005.
+- "1.500+.005/-.000" → ASYMMETRIC. upper=0.005, lower=0.000.
+- "X.XXX = .005" (= sign is OCR garbage for ±) → SYMMETRIC ±0.005.
+- Default unit when nominal looks like inches (X.XXX format) → "in".
+
 CRITICAL — return "skip" for:
 - Page numbers like "1/1", "2/6"
-- Quantity prefixes like "2X", "4X"
-- Standalone short integers like "4", "7", "208" — these are usually zone markers
-- Title block fragments like "GPEMP0100044"
-- Section/view labels like "SECTION A-A", "SCALE 1/1"
+- Quantity prefixes like "2X", "4X" alone
+- Standalone short integers like "4", "7", "208" — these are zone markers
+- Square-bracket find numbers like "[22]", "[401]" — fastener callouts
+- Title block fragments: "GPEMP", "TUBE ASSEMBLY", "SOLAR ARRAY", "MATERIAL"
+- Section/view labels: "SECTION A-A", "SCALE 1/1", "DETAIL"
+- PDM/drawing footer: "Export Controlled", "State Implementation", "Lockheed"
+- Cage codes (5-digit numbers like "06887")
+- Times like "17:15:17"
 - Anything without a decimal point AND not a clear measurement
 
 Reference dimensions: parentheses around a value like "(1.250)" → this IS a dim,
@@ -313,6 +362,21 @@ def classify(text: str) -> dict[str, Any]:
     if is_ref:
         upper = 0.0
         lower = 0.0
+    else:
+        # Post-process: detect symmetric-tolerance shorthand patterns the LLM
+        # often misreads. Real aerospace pattern "X.XXX .010 .010" or
+        # "X.XXX+.010 .010" means ±0.010 symmetric. If the AI returned an
+        # asymmetric upper/0 split, override when we see two identical
+        # post-nominal values in the source text.
+        sym_match = re.search(
+            r"\d+\.\d+\s*[+\s]?\.?(\d+)\s+\.?(\d+)\b", text
+        )
+        if sym_match and upper is not None and lower is not None:
+            val_a = sym_match.group(1)
+            val_b = sym_match.group(2)
+            if val_a == val_b and lower == 0:
+                # Convert "+.010/-0" -> "±.010"
+                lower = upper
 
     result = {
         "char_type": ctype,
