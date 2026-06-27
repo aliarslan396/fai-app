@@ -18,9 +18,24 @@ services:
       - fai_ollama_data:/root/.ollama
     networks:
       - fai_network
+    environment:
+      # Unload model from RAM after 2 min of inactivity. On a 4 GB droplet
+      # llama3.2:3b takes ~3 GB constant — keeping it resident blocks OCR
+      # spikes and crashes backend with OOM. Cold reload on next request
+      # adds ~15-20 sec to the first call but stops the daily hangs.
+      OLLAMA_KEEP_ALIVE: "2m"
+      # Single model slot — don't try to keep multiple loaded.
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      # One inference at a time. Prevents two parallel AI calls from
+      # doubling RAM (currently single-user shop anyway).
+      OLLAMA_NUM_PARALLEL: "1"
+    deploy:
+      resources:
+        limits:
+          memory: 3500M
     healthcheck:
       test: ["CMD", "ollama", "list"]
-      interval: 15s
+      interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
