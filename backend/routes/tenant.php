@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\BalloonController;
 use App\Http\Controllers\Tenant\CharacteristicController;
+use App\Http\Controllers\Tenant\SignatureController;
 use App\Http\Controllers\Tenant\CustomerController;
 use App\Http\Controllers\Tenant\CustomReportController;
 use App\Http\Controllers\Tenant\DashboardController;
@@ -202,6 +203,12 @@ Route::prefix('api/v1')
                 Route::patch('{id}/rows/{row_id}', [CustomReportController::class, 'updateRow']);
                 Route::post('{id}/sync-from-plan', [CustomReportController::class, 'syncFromPlan']);
                 Route::post('{id}/import-from-fai', [CustomReportController::class, 'importFromFai']);
+            });
+
+            // Signatures (Module 4.6 — Week 13)
+            Route::prefix('signatures')->group(function () {
+                Route::get('/', [SignatureController::class, 'index']);
+                Route::post('/', [SignatureController::class, 'store']);
             });
 
             // Drawings — upload + view + delete

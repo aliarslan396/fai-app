@@ -35,6 +35,8 @@ class CustomInspectionReport extends Model
         'signature_path',
         'stamp_path',
         'created_by',
+        'locked_at',
+        'locked_by',
     ];
 
     protected $casts = [
@@ -42,6 +44,8 @@ class CustomInspectionReport extends Model
         'tolerance_block_overridden' => 'boolean',
         'prepared_at' => 'datetime',
         'locked' => 'boolean',
+        'locked_at' => 'datetime',
+        'locked_by' => 'integer',
     ];
 
     public function session()
@@ -75,8 +79,15 @@ class CustomInspectionReport extends Model
             ->orderBy('row_number');
     }
 
+    public function signatures()
+    {
+        return $this->morphMany(Signature::class, 'signable');
+    }
+
     public function isLocked(): bool
     {
-        return $this->locked || $this->status === 'signed';
+        return $this->locked
+            || $this->status === 'signed'
+            || $this->locked_at !== null;
     }
 }

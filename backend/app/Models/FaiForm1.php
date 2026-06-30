@@ -46,6 +46,8 @@ class FaiForm1 extends Model
         'locked',
         'signature_path',
         'stamp_path',
+        'locked_at',
+        'locked_by',
     ];
 
     protected $casts = [
@@ -54,6 +56,8 @@ class FaiForm1 extends Model
         'field23_reviewed_at' => 'datetime',
         'field25_customer_approval_at' => 'datetime',
         'locked' => 'boolean',
+        'locked_at' => 'datetime',
+        'locked_by' => 'integer',
     ];
 
     public function session()
@@ -86,8 +90,15 @@ class FaiForm1 extends Model
         return $this->hasMany(FaiForm3Row::class)->orderBy('sort_order');
     }
 
+    public function signatures()
+    {
+        return $this->morphMany(Signature::class, 'signable');
+    }
+
     public function isLocked(): bool
     {
-        return $this->locked || $this->status === 'accepted';
+        return $this->locked
+            || $this->status === 'accepted'
+            || $this->locked_at !== null;
     }
 }
