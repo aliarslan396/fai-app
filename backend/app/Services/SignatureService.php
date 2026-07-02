@@ -82,10 +82,16 @@ class SignatureService
                 in_array('locked_at', $signable->getFillable(), true) &&
                 $signable->locked_at === null
             ) {
-                $signable->update([
+                $updates = [
                     'locked_at' => $now,
                     'locked_by' => $user->id,
-                ]);
+                ];
+                // Also flip the legacy boolean flag so older frontend reads
+                // that check ->locked directly see the lock.
+                if (in_array('locked', $signable->getFillable(), true)) {
+                    $updates['locked'] = true;
+                }
+                $signable->update($updates);
             }
 
             AuditLog::record('form.signed', [

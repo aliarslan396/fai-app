@@ -23,9 +23,17 @@ class Form3SyncEngine
 
     /**
      * @return int Number of Form 3 rows synced (created or updated).
+     *
+     * Refuses to sync a locked (signed) form — cascading a plan change
+     * onto signed data would break audit non-repudiation. Callers should
+     * check isLocked() first and fail loudly at the controller layer.
      */
     public function sync(FaiForm1 $form1): int
     {
+        if ($form1->isLocked()) {
+            throw new \RuntimeException('Cannot sync Form 3 rows: FAI is locked.');
+        }
+
         $plan = InspectionPlan::with(['characteristics', 'balloons'])->findOrFail($form1->inspection_plan_id);
         $synced = 0;
 

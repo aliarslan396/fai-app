@@ -50,9 +50,9 @@ class SignatureController extends Controller
                 $request->userAgent() ?? '',
             );
         } catch (\RuntimeException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
+            return response()->json(['message' => $e->getMessage()], 422);
         } catch (InvalidArgumentException $e) {
-            return response()->json(['error' => $e->getMessage()], 400);
+            return response()->json(['message' => $e->getMessage()], 400);
         }
 
         return response()->json([

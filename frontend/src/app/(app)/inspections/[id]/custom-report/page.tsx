@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   ArrowLeft, RefreshCw, Loader2, Download, AlertTriangle, CheckCircle2,
-  XCircle, Circle, FileCheck,
+  XCircle, Circle, FileCheck, PenLine, Lock,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { ErrorState } from "@/components/error-state"
 import { WorkflowProgress } from "@/components/workflow-progress"
+import { SignDialog } from "@/components/sign-dialog"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
 import { useAuthStore } from "@/lib/auth-store"
@@ -126,6 +127,7 @@ export default function CustomReportPage() {
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [signDialogOpen, setSignDialogOpen] = useState(false)
 
   // header editable fields — ref-backed to avoid stale-closure in debounced save
   const [headerDraft, setHeaderDraft] = useState<Partial<Report>>({})
@@ -654,7 +656,15 @@ export default function CustomReportPage() {
       {/* Signature block per doc 3.5 */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Signature</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            Signature
+            {report.locked && (
+              <Badge variant="secondary" className="gap-1">
+                <Lock className="h-3 w-3" />
+                LOCKED
+              </Badge>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="rounded border-l-4 border-primary/60 bg-muted/30 p-3 text-sm italic">
@@ -674,19 +684,30 @@ export default function CustomReportPage() {
               </div>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            E-signature capture lands in Module 4.6.
-          </p>
+          {!report.locked && (
+            <p className="text-xs text-muted-foreground">
+              Signing requires password re-verify. Once signed, the report locks and no further edits are possible.
+            </p>
+          )}
         </CardContent>
       </Card>
 
       <div className="flex items-center justify-between border-t pt-4">
         <div className="text-sm text-muted-foreground">
-          Step 5 (sign + stamp) + PDF export land in Module 4.6.
+          {report.locked
+            ? "Report signed and locked. Excel + PDF export lands next."
+            : "Complete all rows then sign to lock the report."}
         </div>
-        <Button disabled={!summary.all_done}>
-          <Download className="mr-2 h-4 w-4" />
-          {summary.all_done ? "Mark Complete & Sign" : `${summary.not_measured} more to measure`}
+        <Button
+          disabled={!summary.all_done || report.locked}
+          onClick={() => setSignDialogOpen(true)}
+        >
+          <PenLine className="mr-2 h-4 w-4" />
+          {report.locked
+            ? "Signed"
+            : summary.all_done
+              ? "Sign & Lock"
+              : `${summary.not_measured} more to measure`}
         </Button>
       </div>
 
@@ -701,6 +722,16 @@ export default function CustomReportPage() {
           </CardContent>
         </Card>
       )}
+
+      <SignDialog
+        open={signDialogOpen}
+        onOpenChange={setSignDialogOpen}
+        signableType="CustomInspectionReport"
+        signableId={report.id}
+        statement={report.template?.signature_statement}
+        allowedRoles={["inspector", "qa_manager"]}
+        onSigned={() => fetchAll()}
+      />
     </div>
   )
 }

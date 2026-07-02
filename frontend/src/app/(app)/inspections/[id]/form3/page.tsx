@@ -6,7 +6,7 @@ import Link from "next/link"
 import { toast } from "sonner"
 import {
   ArrowLeft, RefreshCw, Loader2, ExternalLink, AlertTriangle,
-  CheckCircle2, Circle, XCircle,
+  CheckCircle2, Circle, XCircle, PenLine, Lock,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table"
 import { ErrorState } from "@/components/error-state"
 import { WorkflowProgress } from "@/components/workflow-progress"
+import { SignDialog } from "@/components/sign-dialog"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
 import { useAuthStore } from "@/lib/auth-store"
@@ -104,6 +105,7 @@ export default function Form3Page() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [signDialogOpen, setSignDialogOpen] = useState(false)
 
   // Local edit state — ref-backed to avoid stale-closure in debounced save
   const [edits, setEdits] = useState<Record<number, Partial<Form3Row>>>({})
@@ -280,6 +282,25 @@ export default function Form3Page() {
           <Button variant="outline" size="sm" onClick={handleResync} disabled={syncing || data.form1.locked}>
             {syncing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             Re-sync from plan
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setSignDialogOpen(true)}
+            disabled={data.form1.locked || !data.summary.all_done}
+          >
+            {data.form1.locked ? (
+              <>
+                <Lock className="mr-1 h-3.5 w-3.5" />
+                Signed
+              </>
+            ) : (
+              <>
+                <PenLine className="mr-1 h-3.5 w-3.5" />
+                {data.summary.all_done
+                  ? "Sign & Lock"
+                  : `${data.summary.not_measured} more to measure`}
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -486,6 +507,15 @@ export default function Form3Page() {
           </CardContent>
         </Card>
       )}
+
+      <SignDialog
+        open={signDialogOpen}
+        onOpenChange={setSignDialogOpen}
+        signableType="FaiForm1"
+        signableId={data.form1.id}
+        allowedRoles={["inspector", "qa_manager"]}
+        onSigned={() => fetchAll()}
+      />
     </div>
   )
 }

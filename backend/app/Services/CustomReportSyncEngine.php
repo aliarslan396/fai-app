@@ -22,6 +22,10 @@ class CustomReportSyncEngine
 
     public function sync(CustomInspectionReport $report): int
     {
+        if ($report->isLocked()) {
+            throw new \RuntimeException('Cannot sync rows: report is locked.');
+        }
+
         $plan = InspectionPlan::with(['characteristics', 'balloons'])
             ->findOrFail($report->inspection_plan_id);
 
