@@ -79,6 +79,7 @@ Route::prefix('api/v1')
             Route::prefix('auth')->group(function () {
                 Route::post('logout', [TenantAuthController::class, 'logout']);
                 Route::get('me', [TenantAuthController::class, 'me']);
+                Route::patch('me', [TenantAuthController::class, 'updateMe']);
                 Route::post('mfa/setup', [TenantAuthController::class, 'setupMfa']);
                 Route::post('mfa/confirm', [TenantAuthController::class, 'confirmMfa']);
                 Route::post('mfa/disable', [TenantAuthController::class, 'disableMfa']);
@@ -209,6 +210,8 @@ Route::prefix('api/v1')
             Route::prefix('signatures')->group(function () {
                 Route::get('/', [SignatureController::class, 'index']);
                 Route::post('/', [SignatureController::class, 'store']);
+                Route::get('{id}/image', [SignatureController::class, 'image']);
+                Route::get('{id}/stamp', [SignatureController::class, 'stamp']);
             });
 
             // Drawings — upload + view + delete

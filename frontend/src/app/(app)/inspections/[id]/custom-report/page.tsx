@@ -23,6 +23,9 @@ import {
 import { ErrorState } from "@/components/error-state"
 import { WorkflowProgress } from "@/components/workflow-progress"
 import { SignDialog } from "@/components/sign-dialog"
+import { SignatureBlock } from "@/components/signature-block"
+import { SignHistoryPanel } from "@/components/sign-history-panel"
+import { useSignatures } from "@/lib/signatures"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
 import { useAuthStore } from "@/lib/auth-store"
@@ -128,6 +131,11 @@ export default function CustomReportPage() {
   const [syncing, setSyncing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [signDialogOpen, setSignDialogOpen] = useState(false)
+  const { signatures, refetch: refetchSignatures } = useSignatures(
+    "CustomInspectionReport",
+    report?.id ?? null,
+  )
+  const latestSignature = signatures.length ? signatures[signatures.length - 1] : null
 
   // header editable fields — ref-backed to avoid stale-closure in debounced save
   const [headerDraft, setHeaderDraft] = useState<Partial<Report>>({})
@@ -698,18 +706,25 @@ export default function CustomReportPage() {
             ? "Report signed and locked. Excel + PDF export lands next."
             : "Complete all rows then sign to lock the report."}
         </div>
-        <Button
-          disabled={!summary.all_done || report.locked}
-          onClick={() => setSignDialogOpen(true)}
-        >
-          <PenLine className="mr-2 h-4 w-4" />
-          {report.locked
-            ? "Signed"
-            : summary.all_done
-              ? "Sign & Lock"
-              : `${summary.not_measured} more to measure`}
-        </Button>
+        <div className="flex items-center gap-2">
+          <SignHistoryPanel signableType="CustomInspectionReport" signableId={report.id} />
+          <Button
+            disabled={!summary.all_done || report.locked}
+            onClick={() => setSignDialogOpen(true)}
+          >
+            <PenLine className="mr-2 h-4 w-4" />
+            {report.locked
+              ? "Signed"
+              : summary.all_done
+                ? "Sign & Lock"
+                : `${summary.not_measured} more to measure`}
+          </Button>
+        </div>
       </div>
+
+      {latestSignature && (
+        <SignatureBlock signature={latestSignature} />
+      )}
 
       {summary.failed > 0 && (
         <Card className="border-amber-300 bg-amber-50/50">
@@ -730,7 +745,10 @@ export default function CustomReportPage() {
         signableId={report.id}
         statement={report.template?.signature_statement}
         allowedRoles={["inspector", "qa_manager"]}
-        onSigned={() => fetchAll()}
+        onSigned={() => {
+          void fetchAll()
+          void refetchSignatures()
+        }}
       />
     </div>
   )

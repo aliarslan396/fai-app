@@ -10,7 +10,10 @@ use App\Services\SignatureService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class SignatureController extends Controller
 {
@@ -78,6 +81,37 @@ class SignatureController extends Controller
             ->get();
 
         return response()->json(['signatures' => $signables]);
+    }
+
+    public function image(int $id): Response|BinaryFileResponse
+    {
+        return $this->serveImage($id, 'signature_image_path');
+    }
+
+    public function stamp(int $id): Response|BinaryFileResponse
+    {
+        return $this->serveImage($id, 'stamp_image_path');
+    }
+
+    private function serveImage(int $id, string $column): Response|BinaryFileResponse
+    {
+        $this->checkPermission('inspections.view');
+
+        $signature = Signature::findOrFail($id);
+        $relative = $signature->{$column};
+        if (! $relative) {
+            abort(404, 'Image path missing on signature');
+        }
+
+        $path = Storage::disk('local')->path($relative);
+        if (! file_exists($path)) {
+            abort(404, 'Signature image missing on disk');
+        }
+
+        return response()->file($path, [
+            'Content-Type' => 'image/png',
+            'Cache-Control' => 'private, max-age=3600',
+        ]);
     }
 
     private function findSignable(string $shortName, int $id): Model

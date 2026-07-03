@@ -51,6 +51,8 @@ class Signature extends Model
         'signed_by' => 'integer',
     ];
 
+    protected $appends = ['image_url', 'stamp_url'];
+
     public function signable(): MorphTo
     {
         return $this->morphTo();
@@ -59,5 +61,19 @@ class Signature extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(TenantUser::class, 'signed_by');
+    }
+
+    public function getImageUrlAttribute(): ?string
+    {
+        return $this->signature_image_path
+            ? "/signatures/{$this->id}/image"
+            : null;
+    }
+
+    public function getStampUrlAttribute(): ?string
+    {
+        return $this->stamp_image_path
+            ? "/signatures/{$this->id}/stamp"
+            : null;
     }
 }

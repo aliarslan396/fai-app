@@ -24,6 +24,9 @@ import {
 import { ErrorState } from "@/components/error-state"
 import { WorkflowProgress } from "@/components/workflow-progress"
 import { SignDialog } from "@/components/sign-dialog"
+import { SignatureBlock } from "@/components/signature-block"
+import { SignHistoryPanel } from "@/components/sign-history-panel"
+import { useSignatures } from "@/lib/signatures"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
 import { useAuthStore } from "@/lib/auth-store"
@@ -106,6 +109,11 @@ export default function Form3Page() {
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [signDialogOpen, setSignDialogOpen] = useState(false)
+  const { signatures, refetch: refetchSignatures } = useSignatures(
+    "FaiForm1",
+    data?.form1?.id ?? null,
+  )
+  const latestSignature = signatures.length ? signatures[signatures.length - 1] : null
 
   // Local edit state — ref-backed to avoid stale-closure in debounced save
   const [edits, setEdits] = useState<Record<number, Partial<Form3Row>>>({})
@@ -279,6 +287,7 @@ export default function Form3Page() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <SignHistoryPanel signableType="FaiForm1" signableId={data.form1.id} />
           <Button variant="outline" size="sm" onClick={handleResync} disabled={syncing || data.form1.locked}>
             {syncing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             Re-sync from plan
@@ -508,13 +517,20 @@ export default function Form3Page() {
         </Card>
       )}
 
+      {latestSignature && (
+        <SignatureBlock signature={latestSignature} />
+      )}
+
       <SignDialog
         open={signDialogOpen}
         onOpenChange={setSignDialogOpen}
         signableType="FaiForm1"
         signableId={data.form1.id}
         allowedRoles={["inspector", "qa_manager"]}
-        onSigned={() => fetchAll()}
+        onSigned={() => {
+          void fetchAll()
+          void refetchSignatures()
+        }}
       />
     </div>
   )
