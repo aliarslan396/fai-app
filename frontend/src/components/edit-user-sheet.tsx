@@ -37,6 +37,8 @@ interface User {
   phone: string | null
   status: "active" | "disabled" | "pending"
   two_factor_enabled: boolean
+  cert_number?: string | null
+  signature_role_title?: string | null
   roles: Array<{ name: string }>
 }
 
@@ -54,6 +56,8 @@ const schema = z.object({
   phone: z.string().optional().or(z.literal("")),
   role: z.string().min(1),
   password: z.string().optional().or(z.literal("")),
+  cert_number: z.string().max(50).optional().or(z.literal("")),
+  signature_role_title: z.string().max(100).optional().or(z.literal("")),
 })
 
 type Form = z.infer<typeof schema>
@@ -88,6 +92,8 @@ export function EditUserSheet({ user, onOpenChange, onSuccess }: Props) {
         phone: user.phone || "",
         role: user.roles?.[0]?.name || "viewer",
         password: "",
+        cert_number: user.cert_number || "",
+        signature_role_title: user.signature_role_title || "",
       })
     }
   }, [user, reset])
@@ -96,11 +102,13 @@ export function EditUserSheet({ user, onOpenChange, onSuccess }: Props) {
     if (!user) return
     setBusy(true)
     try {
-      const payload: Record<string, string> = {
+      const payload: Record<string, string | null> = {
         name: data.name,
         email: data.email,
         phone: data.phone || "",
         role: data.role,
+        cert_number: data.cert_number?.trim() || null,
+        signature_role_title: data.signature_role_title?.trim() || null,
       }
       if (data.password) payload.password = data.password
 
@@ -166,6 +174,29 @@ export function EditUserSheet({ user, onOpenChange, onSuccess }: Props) {
             <div className="space-y-2">
               <Label htmlFor="edit_phone">Phone</Label>
               <Input id="edit_phone" disabled={busy} {...register("phone")} />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit_cert">Cert #</Label>
+                <Input
+                  id="edit_cert"
+                  placeholder="INS-1042"
+                  disabled={busy}
+                  maxLength={50}
+                  {...register("cert_number")}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit_stamp_title">Stamp title</Label>
+                <Input
+                  id="edit_stamp_title"
+                  placeholder="Senior QA Inspector"
+                  disabled={busy}
+                  maxLength={100}
+                  {...register("signature_role_title")}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">

@@ -9,6 +9,8 @@ export interface User {
   status: string
   two_factor_enabled: boolean
   master_role?: string
+  cert_number?: string | null
+  signature_role_title?: string | null
   roles?: Array<{ name: string }>
   permissions?: Array<{ name: string }>
 }

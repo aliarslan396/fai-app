@@ -43,6 +43,8 @@ const schema = z.object({
   phone: z.string().optional(),
   password: z.string().min(8, "At least 8 characters"),
   role: z.string().min(1, "Pick a role"),
+  cert_number: z.string().max(50).optional(),
+  signature_role_title: z.string().max(100).optional(),
 })
 
 type Form = z.infer<typeof schema>
@@ -135,6 +137,29 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: Props) {
           <div className="space-y-2">
             <Label htmlFor="phone">Phone (optional)</Label>
             <Input id="phone" placeholder="+1 555 123 4567" disabled={busy} {...register("phone")} />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="cert_number">Cert # (optional)</Label>
+              <Input
+                id="cert_number"
+                placeholder="INS-1042"
+                disabled={busy}
+                maxLength={50}
+                {...register("cert_number")}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="signature_role_title">Stamp title (optional)</Label>
+              <Input
+                id="signature_role_title"
+                placeholder="Senior QA Inspector"
+                disabled={busy}
+                maxLength={100}
+                {...register("signature_role_title")}
+              />
+            </div>
           </div>
 
           <div className="space-y-2">

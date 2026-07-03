@@ -38,6 +38,8 @@ class TenantUser extends Authenticatable
         'last_login_ip',
         'failed_login_attempts',
         'locked_until',
+        'cert_number',
+        'signature_role_title',
     ];
 
     protected $hidden = [

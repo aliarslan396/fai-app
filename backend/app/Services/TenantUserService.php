@@ -44,6 +44,8 @@ class TenantUserService
             'password' => 'required|string|min:8',
             'role' => 'required|string|in:' . implode(',', self::VALID_ROLES),
             'status' => 'sometimes|string|in:active,disabled,pending',
+            'cert_number' => 'nullable|string|max:50',
+            'signature_role_title' => 'nullable|string|max:100',
         ])->validate();
 
         $user = TenantUser::create([
@@ -53,6 +55,8 @@ class TenantUserService
             'password' => Hash::make($data['password']),
             'status' => $data['status'] ?? 'active',
             'email_verified_at' => now(),
+            'cert_number' => $data['cert_number'] ?? null,
+            'signature_role_title' => $data['signature_role_title'] ?? null,
         ]);
 
         $user->assignRole($data['role']);
@@ -77,17 +81,18 @@ class TenantUserService
             'password' => 'sometimes|string|min:8',
             'role' => 'sometimes|string|in:' . implode(',', self::VALID_ROLES),
             'status' => 'sometimes|string|in:active,disabled,pending',
+            'cert_number' => 'sometimes|nullable|string|max:50',
+            'signature_role_title' => 'sometimes|nullable|string|max:100',
         ])->validate();
 
-        $oldValues = $user->only(['name', 'email', 'phone', 'status']);
+        $oldValues = $user->only(['name', 'email', 'phone', 'status', 'cert_number', 'signature_role_title']);
         $oldRole = $user->roles->pluck('name')->first();
 
-        $user->fill(array_filter([
-            'name' => $data['name'] ?? null,
-            'email' => $data['email'] ?? null,
-            'phone' => $data['phone'] ?? null,
-            'status' => $data['status'] ?? null,
-        ], fn ($v) => $v !== null));
+        foreach (['name', 'email', 'phone', 'status', 'cert_number', 'signature_role_title'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $user->{$field} = $data[$field];
+            }
+        }
 
         if (isset($data['password'])) {
             $user->password = Hash::make($data['password']);
@@ -100,7 +105,7 @@ class TenantUserService
             $oldValues['role'] = $oldRole;
         }
 
-        $newValues = $user->only(['name', 'email', 'phone', 'status']);
+        $newValues = $user->only(['name', 'email', 'phone', 'status', 'cert_number', 'signature_role_title']);
         if (isset($data['role']) && $data['role'] !== $oldRole) {
             $newValues['role'] = $data['role'];
         }

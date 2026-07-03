@@ -1,22 +1,55 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { Loader2, Save } from "lucide-react"
+import { toast } from "sonner"
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { MfaSection } from "@/components/mfa-section"
 import { useAuthStore } from "@/lib/auth-store"
+import api from "@/lib/api"
+import { getErrorMessage } from "@/lib/errors"
 
 export default function ProfilePage() {
-  const { user, tenant, context } = useAuthStore()
+  const { user, tenant, context, fetchMe } = useAuthStore()
+  const [certNumber, setCertNumber] = useState("")
+  const [roleTitle, setRoleTitle] = useState("")
+  const [saving, setSaving] = useState(false)
 
-  const initials = user?.name
-    ?.split(" ")
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase() || "U"
+  useEffect(() => {
+    setCertNumber(user?.cert_number ?? "")
+    setRoleTitle(user?.signature_role_title ?? "")
+  }, [user?.cert_number, user?.signature_role_title])
 
   const isMaster = context === "master"
+  const initials =
+    user?.name
+      ?.split(" ")
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "U"
+
+  const handleSaveCredentials = async () => {
+    setSaving(true)
+    try {
+      await api.patch("/auth/me", {
+        cert_number: certNumber.trim() || null,
+        signature_role_title: roleTitle.trim() || null,
+      })
+      await fetchMe()
+      toast.success("Signature credentials updated")
+    } catch (e) {
+      toast.error(getErrorMessage(e))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -69,6 +102,52 @@ export default function ProfilePage() {
           </div>
         </CardContent>
       </Card>
+
+      {!isMaster && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Signature Credentials</CardTitle>
+            <CardDescription>
+              These appear on your QA stamp when you sign an inspection form. Leave blank
+              to fall back to your role name.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="cert_number">Certification number</Label>
+                <Input
+                  id="cert_number"
+                  value={certNumber}
+                  onChange={(e) => setCertNumber(e.target.value)}
+                  placeholder="e.g. INS-1042"
+                  maxLength={50}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="role_title">Signature role title</Label>
+                <Input
+                  id="role_title"
+                  value={roleTitle}
+                  onChange={(e) => setRoleTitle(e.target.value)}
+                  placeholder="e.g. Senior QA Inspector"
+                  maxLength={100}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={handleSaveCredentials} disabled={saving} size="sm">
+                {saving ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
+                Save credentials
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {!isMaster && (
         <Card>

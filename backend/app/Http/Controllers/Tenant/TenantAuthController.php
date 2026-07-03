@@ -124,6 +124,24 @@ class TenantAuthController extends Controller
         return response()->json(['message' => 'Logged out.']);
     }
 
+    public function updateMe(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => 'sometimes|string|min:2|max:100',
+            'phone' => 'sometimes|nullable|string|max:30',
+            'cert_number' => 'sometimes|nullable|string|max:50',
+            'signature_role_title' => 'sometimes|nullable|string|max:100',
+        ]);
+
+        $user = $request->user();
+        foreach ($data as $field => $value) {
+            $user->{$field} = $value;
+        }
+        $user->save();
+
+        return $this->me($request);
+    }
+
     public function me(Request $request): JsonResponse
     {
         $tenant = tenant();
