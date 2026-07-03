@@ -340,6 +340,7 @@ export default function CustomReportPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <SignHistoryPanel signableType="CustomInspectionReport" signableId={report.id} />
           {report.fai_form1_id && (
             <Button variant="outline" size="sm" onClick={handleImportFromFai} disabled={importing || report.locked}>
               {importing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <FileCheck className="mr-1 h-3.5 w-3.5" />}
@@ -349,6 +350,25 @@ export default function CustomReportPage() {
           <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing || report.locked}>
             {syncing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             Sync from plan
+          </Button>
+          <Button
+            size="sm"
+            disabled={!summary.all_done || report.locked}
+            onClick={() => setSignDialogOpen(true)}
+          >
+            {report.locked ? (
+              <>
+                <Lock className="mr-1 h-3.5 w-3.5" />
+                Signed
+              </>
+            ) : (
+              <>
+                <PenLine className="mr-1 h-3.5 w-3.5" />
+                {summary.all_done
+                  ? "Sign & Lock"
+                  : `${summary.not_measured} more to measure`}
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -699,28 +719,6 @@ export default function CustomReportPage() {
           )}
         </CardContent>
       </Card>
-
-      <div className="flex items-center justify-between border-t pt-4">
-        <div className="text-sm text-muted-foreground">
-          {report.locked
-            ? "Report signed and locked. Excel + PDF export lands next."
-            : "Complete all rows then sign to lock the report."}
-        </div>
-        <div className="flex items-center gap-2">
-          <SignHistoryPanel signableType="CustomInspectionReport" signableId={report.id} />
-          <Button
-            disabled={!summary.all_done || report.locked}
-            onClick={() => setSignDialogOpen(true)}
-          >
-            <PenLine className="mr-2 h-4 w-4" />
-            {report.locked
-              ? "Signed"
-              : summary.all_done
-                ? "Sign & Lock"
-                : `${summary.not_measured} more to measure`}
-          </Button>
-        </div>
-      </div>
 
       {latestSignature && (
         <SignatureBlock signature={latestSignature} />
