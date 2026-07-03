@@ -495,16 +495,7 @@ export default function Form3Page() {
         </CardContent>
       </Card>
 
-      <div className="flex items-center justify-between border-t pt-4">
-        <div className="text-sm text-muted-foreground">
-          Step 5 (sign + stamp) opens in Module 4.6.
-        </div>
-        <Button disabled={!data.summary.all_done}>
-          {data.summary.all_done ? "Ready to Sign" : `${data.summary.not_measured} more to measure`}
-        </Button>
-      </div>
-
-      {data.summary.failed > 0 && (
+      {data.summary.failed > 0 && !data.form1.locked && (
         <Card className="border-amber-300 bg-amber-50/50">
           <CardContent className="flex items-start gap-3 py-3">
             <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />

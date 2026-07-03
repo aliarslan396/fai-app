@@ -726,7 +726,7 @@ export default function CustomReportPage() {
         <SignatureBlock signature={latestSignature} />
       )}
 
-      {summary.failed > 0 && (
+      {summary.failed > 0 && !report.locked && (
         <Card className="border-amber-300 bg-amber-50/50">
           <CardContent className="flex items-start gap-3 py-3">
             <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
