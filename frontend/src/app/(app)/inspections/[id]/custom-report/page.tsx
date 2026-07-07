@@ -118,6 +118,7 @@ export default function CustomReportPage() {
   const router = useRouter()
   const { hasPermission } = useAuthStore()
   const canEdit = hasPermission("inspections.edit")
+  const canSign = hasPermission("inspections.sign")
 
   const sessionId = params.id
 
@@ -351,6 +352,7 @@ export default function CustomReportPage() {
             {syncing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             Sync from plan
           </Button>
+          {canSign && (
           <Button
             size="sm"
             disabled={!summary.all_done || report.locked}
@@ -370,6 +372,7 @@ export default function CustomReportPage() {
               </>
             )}
           </Button>
+          )}
         </div>
       </div>
 

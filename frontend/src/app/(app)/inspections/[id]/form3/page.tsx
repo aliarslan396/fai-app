@@ -100,6 +100,7 @@ export default function Form3Page() {
   const router = useRouter()
   const { hasPermission } = useAuthStore()
   const canEdit = hasPermission("inspections.edit")
+  const canSign = hasPermission("inspections.sign")
 
   const sessionId = params.id
 
@@ -292,6 +293,7 @@ export default function Form3Page() {
             {syncing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             Re-sync from plan
           </Button>
+          {canSign && (
           <Button
             size="sm"
             onClick={() => setSignDialogOpen(true)}
@@ -311,6 +313,7 @@ export default function Form3Page() {
               </>
             )}
           </Button>
+          )}
         </div>
       </div>
 

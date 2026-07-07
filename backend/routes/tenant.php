@@ -209,7 +209,7 @@ Route::prefix('api/v1')
             // Signatures (Module 4.6 — Week 13)
             Route::prefix('signatures')->group(function () {
                 Route::get('/', [SignatureController::class, 'index']);
-                Route::post('/', [SignatureController::class, 'store']);
+                Route::middleware('throttle:5,1')->post('/', [SignatureController::class, 'store']);
                 Route::get('{id}/image', [SignatureController::class, 'image']);
                 Route::get('{id}/stamp', [SignatureController::class, 'stamp']);
             });
