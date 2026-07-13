@@ -2,7 +2,10 @@
 
 namespace App\Exceptions;
 
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -26,5 +29,17 @@ class Handler extends ExceptionHandler
         $this->reportable(function (Throwable $e) {
             //
         });
+    }
+
+    /**
+     * API-only app: unauthenticated requests always get a 401 JSON
+     * response. Never fall back to redirect()->guest(route('login'))
+     * because no `login` web route exists.
+     */
+    protected function unauthenticated($request, AuthenticationException $exception): Response
+    {
+        return response()->json([
+            'message' => $exception->getMessage() ?: 'Unauthenticated.',
+        ], 401);
     }
 }

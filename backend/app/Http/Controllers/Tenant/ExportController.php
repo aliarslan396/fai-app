@@ -5,11 +5,11 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\CustomInspectionReport;
 use App\Models\FaiForm1;
+use App\Services\Export\ExportNotImplementedException;
 use App\Services\ExportService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
-use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
@@ -71,7 +71,7 @@ class ExportController extends Controller
 
         try {
             [$relative, $downloadName, $mime] = $build();
-        } catch (RuntimeException $e) {
+        } catch (ExportNotImplementedException $e) {
             abort(501, $e->getMessage());
         }
 

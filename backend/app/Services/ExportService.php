@@ -7,9 +7,9 @@ use App\Models\CustomInspectionReport;
 use App\Models\FaiForm1;
 use App\Models\TenantUser;
 use App\Services\Export\As9102ExcelBuilder;
+use App\Services\Export\ExportNotImplementedException;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use RuntimeException;
 
 /**
  * Generates and stores customer-ready export artifacts.
@@ -49,13 +49,13 @@ class ExportService
     public function exportAs9102Pdf(FaiForm1 $form, TenantUser $user): string
     {
         $this->assertReadable($form);
-        throw new RuntimeException('AS9102 PDF export not yet implemented (Week 14 Day 5).');
+        throw new ExportNotImplementedException('AS9102 PDF export not yet implemented (Week 14 Day 5).');
     }
 
     public function exportCustomReportPdf(CustomInspectionReport $report, TenantUser $user): string
     {
         $this->assertReadable($report);
-        throw new RuntimeException('Custom Report PDF export not yet implemented (Week 14 Day 4).');
+        throw new ExportNotImplementedException('Custom Report PDF export not yet implemented (Week 14 Day 4).');
     }
 
     /**
