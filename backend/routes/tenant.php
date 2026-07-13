@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\BalloonController;
 use App\Http\Controllers\Tenant\CharacteristicController;
+use App\Http\Controllers\Tenant\ExportController;
 use App\Http\Controllers\Tenant\SignatureController;
 use App\Http\Controllers\Tenant\CustomerController;
 use App\Http\Controllers\Tenant\CustomReportController;
@@ -212,6 +213,13 @@ Route::prefix('api/v1')
                 Route::middleware('throttle:5,1')->post('/', [SignatureController::class, 'store']);
                 Route::get('{id}/image', [SignatureController::class, 'image']);
                 Route::get('{id}/stamp', [SignatureController::class, 'stamp']);
+            });
+
+            // Exports (Module 5 — Week 14). Bodies stubbed until Day 2-5.
+            Route::prefix('exports')->group(function () {
+                Route::get('as9102-excel/{formId}', [ExportController::class, 'as9102Excel']);
+                Route::get('as9102-pdf/{formId}', [ExportController::class, 'as9102Pdf']);
+                Route::get('custom-report-pdf/{reportId}', [ExportController::class, 'customReportPdf']);
             });
 
             // Drawings — upload + view + delete
