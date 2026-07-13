@@ -6,6 +6,7 @@ use App\Models\AuditLog;
 use App\Models\CustomInspectionReport;
 use App\Models\FaiForm1;
 use App\Models\TenantUser;
+use App\Services\Export\As9102ExcelBuilder;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -28,10 +29,21 @@ class ExportService
     private const EXPORT_DISK = 'local';
     private const EXPORT_PREFIX = 'exports';
 
+    public function __construct(private As9102ExcelBuilder $as9102Excel) {}
+
     public function exportAs9102Excel(FaiForm1 $form, TenantUser $user): string
     {
         $this->assertReadable($form);
-        throw new RuntimeException('AS9102 Excel export not yet implemented (Week 14 Day 2-3).');
+        $bytes = $this->as9102Excel->build($form);
+
+        return $this->persist(
+            $bytes,
+            'AS9102-' . ($form->fai_number ?? "form-{$form->id}"),
+            'xlsx',
+            FaiForm1::class,
+            $form->id,
+            $user,
+        );
     }
 
     public function exportAs9102Pdf(FaiForm1 $form, TenantUser $user): string
