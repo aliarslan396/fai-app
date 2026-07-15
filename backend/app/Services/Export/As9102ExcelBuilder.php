@@ -3,10 +3,13 @@
 namespace App\Services\Export;
 
 use App\Models\FaiForm1;
+use App\Models\Signature;
+use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -16,16 +19,15 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
  * Tab layout (per AS9102 spec):
  *   1. Form 1 — Part Number Accountability (26 numbered fields)
  *   2. Form 2 — Product Accountability (materials + processes)
- *   3. Form 3 — Characteristic Accountability (measurements — Day 3)
- *   4. Signatures — signer roster + embedded stamp / sig PNGs (Day 3)
- *
- * Only tabs 1 + 2 are populated today (Week 14 Day 2). Tabs 3 + 4
- * added Day 3.
+ *   3. Form 3 — Characteristic Accountability (measurement grid)
+ *   4. Signatures — signer roster + embedded stamp / sig PNGs
  */
 class As9102ExcelBuilder
 {
     private const HEADER_FILL = 'FFE8EEF7';
     private const SECTION_FILL = 'FFD5DEEA';
+    private const PASS_FILL = 'FFDFF2E1';
+    private const FAIL_FILL = 'FFFBE3E4';
 
     public function build(FaiForm1 $form): string
     {
@@ -33,6 +35,8 @@ class As9102ExcelBuilder
             'part.customer',
             'plan',
             'form2.materials',
+            'form3Rows',
+            'signatures.user:id,name,email,cert_number,signature_role_title',
         ]);
 
         $book = new Spreadsheet();
@@ -44,6 +48,8 @@ class As9102ExcelBuilder
 
         $this->buildForm1Sheet($book->getActiveSheet(), $form);
         $this->buildForm2Sheet($book->createSheet(), $form);
+        $this->buildForm3Sheet($book->createSheet(), $form);
+        $this->buildSignaturesSheet($book->createSheet(), $form);
 
         $book->setActiveSheetIndex(0);
 
@@ -58,11 +64,11 @@ class As9102ExcelBuilder
     {
         $sheet->setTitle('Form 1');
 
-        $sheet->getColumnDimension('A')->setWidth(4);
-        $sheet->getColumnDimension('B')->setWidth(28);
-        $sheet->getColumnDimension('C')->setWidth(32);
+        $sheet->getColumnDimension('A')->setWidth(28);
+        $sheet->getColumnDimension('B')->setWidth(30);
+        $sheet->getColumnDimension('C')->setWidth(4);
         $sheet->getColumnDimension('D')->setWidth(28);
-        $sheet->getColumnDimension('E')->setWidth(32);
+        $sheet->getColumnDimension('E')->setWidth(30);
 
         // Title bar
         $sheet->mergeCells('A1:E1');
@@ -136,8 +142,8 @@ class As9102ExcelBuilder
         $this->styleBanner($sheet, 'A1:G1');
 
         // Identity block (fields 1-4 mirror Form 1 for cross-ref)
-        $this->labeledPair($sheet, 3, 'A', '1. Part Number', $form->field1_part_number, 'D', '2. Part Name', $form->field2_part_name);
-        $this->labeledPair($sheet, 4, 'A', '3. Serial Number', $form->field3_serial_number, 'D', '4. FAIR Identifier', $form->field4_fair_identifier);
+        $this->labeledPair($sheet, 3, 'B', '1. Part Number', $form->field1_part_number, 'E', '2. Part Name', $form->field2_part_name);
+        $this->labeledPair($sheet, 4, 'B', '3. Serial Number', $form->field3_serial_number, 'E', '4. FAIR Identifier', $form->field4_fair_identifier);
 
         // Materials / processes table header (fields 5-10)
         $this->sectionHeader($sheet, 'A6:G6', '5–10  Materials, Processes, and Inspections');
@@ -205,6 +211,237 @@ class As9102ExcelBuilder
         $this->styleValue($sheet, "B{$row}:G" . ($row + 2));
         $sheet->getStyle("B{$row}:G" . ($row + 2))->getAlignment()->setWrapText(true)->setVertical(Alignment::VERTICAL_TOP);
         $sheet->getRowDimension($row)->setRowHeight(50);
+    }
+
+    private function buildForm3Sheet(Worksheet $sheet, FaiForm1 $form): void
+    {
+        $sheet->setTitle('Form 3');
+
+        $widths = ['A' => 5, 'B' => 14, 'C' => 14, 'D' => 14, 'E' => 30, 'F' => 18, 'G' => 15, 'H' => 10, 'I' => 18, 'J' => 30];
+        foreach ($widths as $col => $w) {
+            $sheet->getColumnDimension($col)->setWidth($w);
+        }
+
+        // Title bar
+        $sheet->mergeCells('A1:J1');
+        $sheet->setCellValue('A1', 'AS9102 REV C — FORM 3: CHARACTERISTIC ACCOUNTABILITY, VERIFICATION AND COMPATIBILITY EVALUATION');
+        $this->styleBanner($sheet, 'A1:J1');
+
+        // Identity cross-ref
+        $this->labeledPair($sheet, 3, 'B', '1. Part Number', $form->field1_part_number, 'E', '3. Serial Number', $form->field3_serial_number);
+        $this->labeledPair($sheet, 4, 'B', '2. Part Name', $form->field2_part_name, 'E', '4. FAIR Identifier', $form->field4_fair_identifier);
+
+        // Column headers
+        $headers = [
+            'A' => '#',
+            'B' => '5. Char #',
+            'C' => '6. Reference',
+            'D' => '7. Designator',
+            'E' => '8. Requirement',
+            'F' => '9. Result',
+            'G' => '10. Tooling',
+            'H' => 'Pass/Fail',
+            'I' => '11. NCR #',
+            'J' => '14. Comments',
+        ];
+        foreach ($headers as $col => $label) {
+            $sheet->setCellValue($col . '6', $label);
+        }
+        $this->styleHeader($sheet, 'A6:J6');
+
+        // Measurement rows
+        $rows = $form->form3Rows ?? collect();
+        $rowIdx = 7;
+        $passCount = 0;
+        $failCount = 0;
+        $ncrCount = 0;
+
+        if ($rows->isEmpty()) {
+            $sheet->mergeCells("A{$rowIdx}:J{$rowIdx}");
+            $sheet->setCellValue("A{$rowIdx}", 'No characteristics recorded.');
+            $sheet->getStyle("A{$rowIdx}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("A{$rowIdx}")->getFont()->setItalic(true);
+            $this->applyBorder($sheet, "A{$rowIdx}:J{$rowIdx}");
+        } else {
+            foreach ($rows as $idx => $r) {
+                $sheet->setCellValue("A{$rowIdx}", $idx + 1);
+                $sheet->setCellValue("B{$rowIdx}", $r->field5_char_number ?? $r->balloon_number);
+                $sheet->setCellValue("C{$rowIdx}", $r->field6_reference_location);
+                $sheet->setCellValue("D{$rowIdx}", $r->field7_char_designator);
+                $sheet->setCellValue("E{$rowIdx}", $r->field8_requirement);
+                $sheet->setCellValue("F{$rowIdx}", $r->field9_results);
+                $sheet->setCellValue("G{$rowIdx}", $r->field10_qualified_tooling);
+                $sheet->setCellValue("H{$rowIdx}", strtoupper($r->pass_fail ?? '—'));
+                $sheet->setCellValue("I{$rowIdx}", $r->field11_nonconformance_number);
+                $sheet->setCellValue("J{$rowIdx}", $r->field14_additional_comments);
+
+                $verdict = strtolower((string) $r->pass_fail);
+                if ($verdict === 'pass') {
+                    $passCount++;
+                    $this->fillRow($sheet, "A{$rowIdx}:J{$rowIdx}", self::PASS_FILL);
+                } elseif ($verdict === 'fail') {
+                    $failCount++;
+                    $this->fillRow($sheet, "A{$rowIdx}:J{$rowIdx}", self::FAIL_FILL);
+                }
+
+                if (! empty($r->field11_nonconformance_number)) {
+                    $ncrCount++;
+                }
+
+                $this->applyBorder($sheet, "A{$rowIdx}:J{$rowIdx}");
+                $sheet->getStyle("H{$rowIdx}")->applyFromArray([
+                    'font' => ['bold' => true],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+                ]);
+                $rowIdx++;
+            }
+        }
+
+        // Summary footer
+        $rowIdx++;
+        $summary = sprintf(
+            'Total: %d   ·   Pass: %d   ·   Fail: %d   ·   NCRs recorded: %d',
+            $rows->count(),
+            $passCount,
+            $failCount,
+            $ncrCount,
+        );
+        $sheet->mergeCells("A{$rowIdx}:J{$rowIdx}");
+        $sheet->setCellValue("A{$rowIdx}", $summary);
+        $sheet->getStyle("A{$rowIdx}")->applyFromArray([
+            'font' => ['bold' => true, 'size' => 10],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => self::SECTION_FILL]],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+        ]);
+        $sheet->getRowDimension($rowIdx)->setRowHeight(22);
+        $this->applyBorder($sheet, "A{$rowIdx}:J{$rowIdx}");
+    }
+
+    private function buildSignaturesSheet(Worksheet $sheet, FaiForm1 $form): void
+    {
+        $sheet->setTitle('Signatures');
+
+        $widths = ['A' => 4, 'B' => 24, 'C' => 20, 'D' => 15, 'E' => 22, 'F' => 20, 'G' => 18];
+        foreach ($widths as $col => $w) {
+            $sheet->getColumnDimension($col)->setWidth($w);
+        }
+
+        // Title bar
+        $sheet->mergeCells('A1:G1');
+        $sheet->setCellValue('A1', 'AS9102 REV C — SIGNATURES & AUTHENTICATION');
+        $this->styleBanner($sheet, 'A1:G1');
+
+        // Column headers
+        $headers = [
+            'A' => '#',
+            'B' => 'Signed By',
+            'C' => 'Role',
+            'D' => 'Cert #',
+            'E' => 'Signature Title',
+            'F' => 'Signed At (UTC)',
+            'G' => 'IP Address',
+        ];
+        foreach ($headers as $col => $label) {
+            $sheet->setCellValue($col . '3', $label);
+        }
+        $this->styleHeader($sheet, 'A3:G3');
+
+        $signatures = $form->signatures ?? collect();
+        $rowIdx = 4;
+
+        if ($signatures->isEmpty()) {
+            $sheet->mergeCells("A{$rowIdx}:G{$rowIdx}");
+            $sheet->setCellValue("A{$rowIdx}", 'Form is unsigned. No signatures on record.');
+            $sheet->getStyle("A{$rowIdx}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("A{$rowIdx}")->getFont()->setItalic(true);
+            $this->applyBorder($sheet, "A{$rowIdx}:G{$rowIdx}");
+
+            return;
+        }
+
+        // Roster rows
+        foreach ($signatures as $idx => $sig) {
+            $sheet->setCellValue("A{$rowIdx}", $idx + 1);
+            $sheet->setCellValue("B{$rowIdx}", $sig->user?->name ?? '(unknown signer)');
+            $sheet->setCellValue("C{$rowIdx}", ucwords(str_replace('_', ' ', $sig->signature_role ?? '')));
+            $sheet->setCellValue("D{$rowIdx}", $sig->user?->cert_number ?? '—');
+            $sheet->setCellValue("E{$rowIdx}", $sig->user?->signature_role_title ?? '—');
+            $sheet->setCellValue("F{$rowIdx}", optional($sig->signed_at)?->format('Y-m-d H:i'));
+            $sheet->setCellValue("G{$rowIdx}", $sig->ip_address ?? '—');
+            $this->applyBorder($sheet, "A{$rowIdx}:G{$rowIdx}");
+            $rowIdx++;
+        }
+
+        // Embed sig + stamp PNGs — one signer per block
+        $rowIdx += 2;
+        foreach ($signatures as $idx => $sig) {
+            $blockStart = $rowIdx;
+
+            // Signer label
+            $sheet->mergeCells("A{$blockStart}:G{$blockStart}");
+            $sheet->setCellValue(
+                "A{$blockStart}",
+                '#' . ($idx + 1) . '  ' . ($sig->user?->name ?? '(unknown)') . '  ·  ' . optional($sig->signed_at)?->format('Y-m-d H:i')
+            );
+            $sheet->getStyle("A{$blockStart}")->applyFromArray([
+                'font' => ['bold' => true, 'size' => 10],
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => self::SECTION_FILL]],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER, 'indent' => 1],
+            ]);
+            $sheet->getRowDimension($blockStart)->setRowHeight(20);
+            $rowIdx++;
+
+            // Sub-labels
+            $sheet->setCellValue("A{$rowIdx}", 'Signature');
+            $sheet->setCellValue("E{$rowIdx}", 'QA Stamp');
+            $sheet->getStyle("A{$rowIdx}")->getFont()->setBold(true);
+            $sheet->getStyle("E{$rowIdx}")->getFont()->setBold(true);
+            $rowIdx++;
+
+            // Reserve visual space (6 rows for images ~= 110px)
+            $imageAnchor = $rowIdx;
+            for ($r = 0; $r < 6; $r++) {
+                $sheet->getRowDimension($imageAnchor + $r)->setRowHeight(20);
+            }
+
+            $this->embedImage($sheet, $sig->signature_image_path, "A{$imageAnchor}", 130);
+            $this->embedImage($sheet, $sig->stamp_image_path, "E{$imageAnchor}", 130);
+
+            $rowIdx = $imageAnchor + 7;
+        }
+    }
+
+    private function embedImage(Worksheet $sheet, ?string $relativePath, string $anchorCell, int $heightPx): void
+    {
+        if (empty($relativePath)) {
+            return;
+        }
+
+        try {
+            $absolute = Storage::disk('local')->path($relativePath);
+        } catch (\Throwable) {
+            return;
+        }
+
+        if (! is_string($absolute) || ! file_exists($absolute)) {
+            return;
+        }
+
+        $drawing = new Drawing();
+        $drawing->setName('embedded image');
+        $drawing->setPath($absolute);
+        $drawing->setHeight($heightPx);
+        $drawing->setCoordinates($anchorCell);
+        $drawing->setOffsetX(4);
+        $drawing->setOffsetY(4);
+        $drawing->setWorksheet($sheet);
+    }
+
+    private function fillRow(Worksheet $sheet, string $range, string $argb): void
+    {
+        $sheet->getStyle($range)->applyFromArray([
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $argb]],
+        ]);
     }
 
     // ---- Style helpers -----------------------------------------------------
