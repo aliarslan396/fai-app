@@ -25,6 +25,7 @@ import { WorkflowProgress } from "@/components/workflow-progress"
 import { SignDialog } from "@/components/sign-dialog"
 import { SignatureBlock } from "@/components/signature-block"
 import { SignHistoryPanel } from "@/components/sign-history-panel"
+import { ExportMenu } from "@/components/export-menu"
 import { useSignatures } from "@/lib/signatures"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
@@ -119,6 +120,7 @@ export default function CustomReportPage() {
   const { hasPermission } = useAuthStore()
   const canEdit = hasPermission("inspections.edit")
   const canSign = hasPermission("inspections.sign")
+  const canExport = hasPermission("inspections.export")
 
   const sessionId = params.id
 
@@ -342,6 +344,12 @@ export default function CustomReportPage() {
         </div>
         <div className="flex items-center gap-2">
           <SignHistoryPanel signableType="CustomInspectionReport" signableId={report.id} />
+          <ExportMenu
+            kind="custom-report"
+            id={report.id}
+            identifier={report.ir_number}
+            canExport={canExport}
+          />
           {report.fai_form1_id && (
             <Button variant="outline" size="sm" onClick={handleImportFromFai} disabled={importing || report.locked}>
               {importing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <FileCheck className="mr-1 h-3.5 w-3.5" />}

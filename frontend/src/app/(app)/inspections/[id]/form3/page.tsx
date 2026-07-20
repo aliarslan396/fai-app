@@ -26,6 +26,7 @@ import { WorkflowProgress } from "@/components/workflow-progress"
 import { SignDialog } from "@/components/sign-dialog"
 import { SignatureBlock } from "@/components/signature-block"
 import { SignHistoryPanel } from "@/components/sign-history-panel"
+import { ExportMenu } from "@/components/export-menu"
 import { useSignatures } from "@/lib/signatures"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
@@ -101,6 +102,7 @@ export default function Form3Page() {
   const { hasPermission } = useAuthStore()
   const canEdit = hasPermission("inspections.edit")
   const canSign = hasPermission("inspections.sign")
+  const canExport = hasPermission("inspections.export")
 
   const sessionId = params.id
 
@@ -289,6 +291,12 @@ export default function Form3Page() {
         </div>
         <div className="flex items-center gap-2">
           <SignHistoryPanel signableType="FaiForm1" signableId={data.form1.id} />
+          <ExportMenu
+            kind="as9102"
+            id={data.form1.id}
+            identifier={data.form1.fai_number}
+            canExport={canExport}
+          />
           <Button variant="outline" size="sm" onClick={handleResync} disabled={syncing || data.form1.locked}>
             {syncing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             Re-sync from plan
