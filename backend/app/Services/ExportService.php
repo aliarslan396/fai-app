@@ -7,6 +7,7 @@ use App\Models\CustomInspectionReport;
 use App\Models\FaiForm1;
 use App\Models\TenantUser;
 use App\Services\Export\As9102ExcelBuilder;
+use App\Services\Export\CustomReportPdfBuilder;
 use App\Services\Export\ExportNotImplementedException;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -29,7 +30,10 @@ class ExportService
     private const EXPORT_DISK = 'local';
     private const EXPORT_PREFIX = 'exports';
 
-    public function __construct(private As9102ExcelBuilder $as9102Excel) {}
+    public function __construct(
+        private As9102ExcelBuilder $as9102Excel,
+        private CustomReportPdfBuilder $customReportPdf,
+    ) {}
 
     public function exportAs9102Excel(FaiForm1 $form, TenantUser $user): string
     {
@@ -55,7 +59,16 @@ class ExportService
     public function exportCustomReportPdf(CustomInspectionReport $report, TenantUser $user): string
     {
         $this->assertReadable($report);
-        throw new ExportNotImplementedException('Custom Report PDF export not yet implemented (Week 14 Day 4).');
+        $bytes = $this->customReportPdf->build($report);
+
+        return $this->persist(
+            $bytes,
+            'InspectionReport-' . ($report->ir_number ?? "report-{$report->id}"),
+            'pdf',
+            CustomInspectionReport::class,
+            $report->id,
+            $user,
+        );
     }
 
     /**
