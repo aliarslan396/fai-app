@@ -16,6 +16,7 @@ use App\Http\Controllers\Tenant\FaiForm2Controller;
 use App\Http\Controllers\Tenant\FaiForm3Controller;
 use App\Http\Controllers\Tenant\InspectionPlanController;
 use App\Http\Controllers\Tenant\InspectionSessionController;
+use App\Http\Controllers\Tenant\NcrController;
 use App\Http\Controllers\Tenant\PartController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use App\Http\Controllers\Tenant\TenantSettingsController;
@@ -213,6 +214,15 @@ Route::prefix('api/v1')
                 Route::middleware('throttle:5,1')->post('/', [SignatureController::class, 'store']);
                 Route::get('{id}/image', [SignatureController::class, 'image']);
                 Route::get('{id}/stamp', [SignatureController::class, 'stamp']);
+            });
+
+            // NCR (Module 6 — Week 15). Auto-numbered NCR-YYYY-NNNN.
+            Route::prefix('ncrs')->group(function () {
+                Route::get('/', [NcrController::class, 'index']);
+                Route::post('/', [NcrController::class, 'store']);
+                Route::get('{id}', [NcrController::class, 'show']);
+                Route::post('{id}/disposition', [NcrController::class, 'disposition']);
+                Route::post('{id}/close', [NcrController::class, 'close']);
             });
 
             // Exports (Module 5 — Week 14). Bodies stubbed until Day 2-5.

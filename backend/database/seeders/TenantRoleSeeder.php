@@ -61,6 +61,7 @@ class TenantRoleSeeder extends Seeder
             'ncr.view',
             'ncr.create',
             'ncr.edit',
+            'ncr.disposition',
             'ncr.close',
             'capa.view',
             'capa.create',
