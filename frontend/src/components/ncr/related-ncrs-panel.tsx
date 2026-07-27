@@ -1,5 +1,6 @@
 "use client"
 
+import { forwardRef, useImperativeHandle } from "react"
 import Link from "next/link"
 import { AlertTriangle, Loader2, ExternalLink } from "lucide-react"
 
@@ -18,13 +19,25 @@ interface Props {
   sessionId: number
 }
 
+export interface RelatedNcrsPanelHandle {
+  refetch: () => void
+}
+
 /**
  * Compact NCR summary strip that sits above the characteristic table
  * on Form 3 / Custom Report pages. Fetches NCRs scoped to the current
  * inspection session so inspectors see defect history at a glance.
+ *
+ * Parents call `ref.current?.refetch()` after creating a new NCR so
+ * the strip picks up the new row without a page refresh.
  */
-export function RelatedNcrsPanel({ sessionId }: Props) {
-  const { ncrs, loading, error } = useNcrs({ sessionId })
+export const RelatedNcrsPanel = forwardRef<RelatedNcrsPanelHandle, Props>(function RelatedNcrsPanel(
+  { sessionId },
+  ref,
+) {
+  const { ncrs, loading, error, refetch } = useNcrs({ sessionId })
+
+  useImperativeHandle(ref, () => ({ refetch }), [refetch])
 
   if (loading) {
     return (
@@ -89,4 +102,4 @@ export function RelatedNcrsPanel({ sessionId }: Props) {
       </CardContent>
     </Card>
   )
-}
+})

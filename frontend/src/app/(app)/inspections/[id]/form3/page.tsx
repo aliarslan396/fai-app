@@ -28,7 +28,7 @@ import { SignatureBlock } from "@/components/signature-block"
 import { SignHistoryPanel } from "@/components/sign-history-panel"
 import { ExportMenu } from "@/components/export-menu"
 import { CreateNcrDialog } from "@/components/ncr/create-ncr-dialog"
-import { RelatedNcrsPanel } from "@/components/ncr/related-ncrs-panel"
+import { RelatedNcrsPanel, type RelatedNcrsPanelHandle } from "@/components/ncr/related-ncrs-panel"
 import { useSignatures } from "@/lib/signatures"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
@@ -115,6 +115,7 @@ export default function Form3Page() {
   const [syncing, setSyncing] = useState(false)
   const [signDialogOpen, setSignDialogOpen] = useState(false)
   const [ncrPrefillRow, setNcrPrefillRow] = useState<Form3Row | null>(null)
+  const relatedNcrsRef = useRef<RelatedNcrsPanelHandle | null>(null)
   const { signatures, refetch: refetchSignatures } = useSignatures(
     "FaiForm1",
     data?.form1?.id ?? null,
@@ -330,7 +331,7 @@ export default function Form3Page() {
 
       <WorkflowProgress currentStep={4} completedSteps={completedSteps} sessionId={session.id} sessionType="as9102" />
 
-      <RelatedNcrsPanel sessionId={session.id} />
+      <RelatedNcrsPanel ref={relatedNcrsRef} sessionId={session.id} />
 
       {/* Summary banner */}
       <Card>
@@ -570,6 +571,7 @@ export default function Form3Page() {
           }}
           onCreated={(ncr) => {
             queueSave(ncrPrefillRow.id, { field11_nonconformance_number: ncr.ncr_number })
+            relatedNcrsRef.current?.refetch()
             setNcrPrefillRow(null)
           }}
         />

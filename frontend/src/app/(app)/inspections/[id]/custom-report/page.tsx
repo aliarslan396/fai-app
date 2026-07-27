@@ -27,7 +27,7 @@ import { SignatureBlock } from "@/components/signature-block"
 import { SignHistoryPanel } from "@/components/sign-history-panel"
 import { ExportMenu } from "@/components/export-menu"
 import { CreateNcrDialog } from "@/components/ncr/create-ncr-dialog"
-import { RelatedNcrsPanel } from "@/components/ncr/related-ncrs-panel"
+import { RelatedNcrsPanel, type RelatedNcrsPanelHandle } from "@/components/ncr/related-ncrs-panel"
 import { useSignatures } from "@/lib/signatures"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
@@ -137,6 +137,7 @@ export default function CustomReportPage() {
   const [importing, setImporting] = useState(false)
   const [signDialogOpen, setSignDialogOpen] = useState(false)
   const [ncrPrefillRow, setNcrPrefillRow] = useState<Row | null>(null)
+  const relatedNcrsRef = useRef<RelatedNcrsPanelHandle | null>(null)
   const { signatures, refetch: refetchSignatures } = useSignatures(
     "CustomInspectionReport",
     report?.id ?? null,
@@ -389,7 +390,7 @@ export default function CustomReportPage() {
 
       <WorkflowProgress currentStep={4} completedSteps={completedSteps} sessionId={session.id} sessionType="custom" />
 
-      <RelatedNcrsPanel sessionId={session.id} />
+      <RelatedNcrsPanel ref={relatedNcrsRef} sessionId={session.id} />
 
       {/* Header — 2 rows per doc */}
       <Card>
@@ -795,6 +796,7 @@ export default function CustomReportPage() {
           }}
           onCreated={(ncr) => {
             queueRowSave(ncrPrefillRow.id, { field11_ncr_number: ncr.ncr_number })
+            relatedNcrsRef.current?.refetch()
             setNcrPrefillRow(null)
           }}
         />
