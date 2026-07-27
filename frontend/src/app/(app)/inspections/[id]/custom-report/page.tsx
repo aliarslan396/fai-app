@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   ArrowLeft, RefreshCw, Loader2, Download, AlertTriangle, CheckCircle2,
-  XCircle, Circle, FileCheck, PenLine, Lock,
+  XCircle, Circle, FileCheck, PenLine, Lock, Plus,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -26,6 +26,8 @@ import { SignDialog } from "@/components/sign-dialog"
 import { SignatureBlock } from "@/components/signature-block"
 import { SignHistoryPanel } from "@/components/sign-history-panel"
 import { ExportMenu } from "@/components/export-menu"
+import { CreateNcrDialog } from "@/components/ncr/create-ncr-dialog"
+import { RelatedNcrsPanel } from "@/components/ncr/related-ncrs-panel"
 import { useSignatures } from "@/lib/signatures"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
@@ -134,6 +136,7 @@ export default function CustomReportPage() {
   const [syncing, setSyncing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [signDialogOpen, setSignDialogOpen] = useState(false)
+  const [ncrPrefillRow, setNcrPrefillRow] = useState<Row | null>(null)
   const { signatures, refetch: refetchSignatures } = useSignatures(
     "CustomInspectionReport",
     report?.id ?? null,
@@ -385,6 +388,8 @@ export default function CustomReportPage() {
       </div>
 
       <WorkflowProgress currentStep={4} completedSteps={completedSteps} sessionId={session.id} sessionType="custom" />
+
+      <RelatedNcrsPanel sessionId={session.id} />
 
       {/* Header — 2 rows per doc */}
       <Card>
@@ -655,13 +660,27 @@ export default function CustomReportPage() {
                       </Select>
                     </td>
                     <td className="px-2 py-1.5">
-                      <Input
-                        value={(e.field11_ncr_number ?? row.field11_ncr_number) ?? ""}
-                        onChange={(ev) => queueRowSave(row.id, { field11_ncr_number: ev.target.value })}
-                        disabled={!canEdit || isEmptyRow || !isFail || report.locked}
-                        placeholder={isFail ? "NCR # required" : ""}
-                        className={`h-7 text-xs ${isFail ? "border-amber-400" : ""}`}
-                      />
+                      <div className="flex items-center gap-1">
+                        <Input
+                          value={(e.field11_ncr_number ?? row.field11_ncr_number) ?? ""}
+                          onChange={(ev) => queueRowSave(row.id, { field11_ncr_number: ev.target.value })}
+                          disabled={!canEdit || isEmptyRow || !isFail || report.locked}
+                          placeholder={isFail ? "NCR # required" : ""}
+                          className={`h-7 text-xs ${isFail ? "border-amber-400" : ""}`}
+                        />
+                        {isFail && canEdit && !report.locked && !isEmptyRow && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 shrink-0"
+                            onClick={() => setNcrPrefillRow(row)}
+                            title="Create NCR from this failed row"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-2 py-1.5">
                       <Input
@@ -759,6 +778,27 @@ export default function CustomReportPage() {
           void refetchSignatures()
         }}
       />
+
+      {ncrPrefillRow && (
+        <CreateNcrDialog
+          open={!!ncrPrefillRow}
+          onOpenChange={(v) => !v && setNcrPrefillRow(null)}
+          prefill={{
+            source_type: "CustomReportCharacteristic",
+            source_id: ncrPrefillRow.id,
+            part_id: report.part_id ?? null,
+            inspection_session_id: session.id,
+            characteristic_ref: ncrPrefillRow.field5_char_number ?? (ncrPrefillRow.balloon_number ? String(ncrPrefillRow.balloon_number) : null),
+            requirement: ncrPrefillRow.field8_requirement,
+            actual_result: ncrPrefillRow.field9_results,
+            unit: null,
+          }}
+          onCreated={(ncr) => {
+            queueRowSave(ncrPrefillRow.id, { field11_ncr_number: ncr.ncr_number })
+            setNcrPrefillRow(null)
+          }}
+        />
+      )}
     </div>
   )
 }

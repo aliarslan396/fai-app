@@ -6,7 +6,7 @@ import Link from "next/link"
 import { toast } from "sonner"
 import {
   ArrowLeft, RefreshCw, Loader2, ExternalLink, AlertTriangle,
-  CheckCircle2, Circle, XCircle, PenLine, Lock,
+  CheckCircle2, Circle, XCircle, PenLine, Lock, Plus,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -27,6 +27,8 @@ import { SignDialog } from "@/components/sign-dialog"
 import { SignatureBlock } from "@/components/signature-block"
 import { SignHistoryPanel } from "@/components/sign-history-panel"
 import { ExportMenu } from "@/components/export-menu"
+import { CreateNcrDialog } from "@/components/ncr/create-ncr-dialog"
+import { RelatedNcrsPanel } from "@/components/ncr/related-ncrs-panel"
 import { useSignatures } from "@/lib/signatures"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
@@ -112,6 +114,7 @@ export default function Form3Page() {
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [signDialogOpen, setSignDialogOpen] = useState(false)
+  const [ncrPrefillRow, setNcrPrefillRow] = useState<Form3Row | null>(null)
   const { signatures, refetch: refetchSignatures } = useSignatures(
     "FaiForm1",
     data?.form1?.id ?? null,
@@ -327,6 +330,8 @@ export default function Form3Page() {
 
       <WorkflowProgress currentStep={4} completedSteps={completedSteps} sessionId={session.id} sessionType="as9102" />
 
+      <RelatedNcrsPanel sessionId={session.id} />
+
       {/* Summary banner */}
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
@@ -481,13 +486,27 @@ export default function Form3Page() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Input
-                            value={(e.field11_nonconformance_number ?? row.field11_nonconformance_number) || ""}
-                            onChange={(ev) => queueSave(row.id, { field11_nonconformance_number: ev.target.value })}
-                            disabled={!canEdit || data.form1.locked || !isFail}
-                            placeholder={isFail ? "NCR # required" : ""}
-                            className={`h-8 text-xs ${isFail ? "border-amber-400" : ""}`}
-                          />
+                          <div className="flex items-center gap-1">
+                            <Input
+                              value={(e.field11_nonconformance_number ?? row.field11_nonconformance_number) || ""}
+                              onChange={(ev) => queueSave(row.id, { field11_nonconformance_number: ev.target.value })}
+                              disabled={!canEdit || data.form1.locked || !isFail}
+                              placeholder={isFail ? "NCR # required" : ""}
+                              className={`h-8 text-xs ${isFail ? "border-amber-400" : ""}`}
+                            />
+                            {isFail && canEdit && !data.form1.locked && (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 shrink-0"
+                                onClick={() => setNcrPrefillRow(row)}
+                                title="Create NCR from this failed row"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           {isSaving ? (
@@ -534,6 +553,27 @@ export default function Form3Page() {
           void refetchSignatures()
         }}
       />
+
+      {ncrPrefillRow && (
+        <CreateNcrDialog
+          open={!!ncrPrefillRow}
+          onOpenChange={(v) => !v && setNcrPrefillRow(null)}
+          prefill={{
+            source_type: "FaiForm3Row",
+            source_id: ncrPrefillRow.id,
+            part_id: session.part?.id ?? null,
+            inspection_session_id: session.id,
+            characteristic_ref: ncrPrefillRow.field5_char_number ?? String(ncrPrefillRow.balloon_number),
+            requirement: ncrPrefillRow.field8_requirement ?? ncrPrefillRow.characteristic?.requirement_string ?? null,
+            actual_result: ncrPrefillRow.field9_results,
+            unit: ncrPrefillRow.characteristic?.unit ?? null,
+          }}
+          onCreated={(ncr) => {
+            queueSave(ncrPrefillRow.id, { field11_nonconformance_number: ncr.ncr_number })
+            setNcrPrefillRow(null)
+          }}
+        />
+      )}
     </div>
   )
 }
