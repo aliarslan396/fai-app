@@ -173,7 +173,11 @@ export default function NcrDetailPage() {
                       <>
                         {" "}·{" "}
                         <Link
-                          href={`/inspections/${ncr.inspection_session_id}`}
+                          href={
+                            ncr.source_type?.includes("CustomReport")
+                              ? `/inspections/${ncr.inspection_session_id}/custom-report`
+                              : `/inspections/${ncr.inspection_session_id}/form3`
+                          }
                           className="text-primary hover:underline"
                         >
                           view inspection
