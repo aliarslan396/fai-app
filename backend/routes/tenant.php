@@ -6,6 +6,7 @@ use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\BalloonController;
 use App\Http\Controllers\Tenant\CharacteristicController;
 use App\Http\Controllers\Tenant\ExportController;
+use App\Http\Controllers\Tenant\GaugeController;
 use App\Http\Controllers\Tenant\SignatureController;
 use App\Http\Controllers\Tenant\CustomerController;
 use App\Http\Controllers\Tenant\CustomReportController;
@@ -214,6 +215,17 @@ Route::prefix('api/v1')
                 Route::middleware('throttle:5,1')->post('/', [SignatureController::class, 'store']);
                 Route::get('{id}/image', [SignatureController::class, 'image']);
                 Route::get('{id}/stamp', [SignatureController::class, 'stamp']);
+            });
+
+            // Gauge Management (Module 3.11 — Week 15). Cal history + status auto-computed.
+            Route::prefix('gauges')->group(function () {
+                Route::get('/', [GaugeController::class, 'index']);
+                Route::post('/', [GaugeController::class, 'store']);
+                Route::get('{id}', [GaugeController::class, 'show']);
+                Route::patch('{id}', [GaugeController::class, 'update']);
+                Route::delete('{id}', [GaugeController::class, 'destroy']);
+                Route::post('{id}/calibrations', [GaugeController::class, 'recordCalibration']);
+                Route::get('calibrations/{calibrationId}/cert', [GaugeController::class, 'certFile']);
             });
 
             // NCR (Module 6 — Week 15). Auto-numbered NCR-YYYY-NNNN.

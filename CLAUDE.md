@@ -2,6 +2,20 @@
 
 **Read this first every session. All decisions locked here. Saves tokens.**
 
+## ⚠ BINDING SCOPE DOCUMENT — READ FIRST EVERY SESSION
+
+**Source of truth:** `/home/arslan/Fai-Manager-complete-build/PROJECT_PLAN.md`
+
+This is the FULL client-provided spec (converted from `FAI_Manager_Complete_Build_Reference (2).docx`).
+Every module, every field, every workflow described in that doc is CONTRACTUALLY IN SCOPE.
+
+**Rules for every session:**
+1. Open `PROJECT_PLAN.md` at the start of every session
+2. Reference specific section number (3.1, 3.2, etc.) when implementing any feature
+3. Never trust a summary — go back to the doc
+4. Flag discrepancies between what's built and what the doc says IMMEDIATELY
+5. Ignore `PROJECT_PLAN.summary.backup.md` — that was the old dropped-scope summary, kept for reference only
+
 ---
 
 ## Project Identity

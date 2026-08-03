@@ -59,7 +59,9 @@ class SignatureService
 
         return DB::transaction(function () use ($user, $signable, $canvasData, $role, $ip, $userAgent) {
             $sigPath = $this->saveCanvasImage($canvasData);
-            $stampPath = $this->stamper->build($user);
+            $faiOrIr = $this->extractIdentifier($signable);
+            $company = optional(tenant())->company_name ?? optional(tenant())->id ?? null;
+            $stampPath = $this->stamper->build($user, null, $faiOrIr, $company);
             $now = now();
 
             $signature = Signature::create([
@@ -130,5 +132,20 @@ class SignatureService
         Storage::disk('local')->put($relativePath, $binary);
 
         return $relativePath;
+    }
+
+    /**
+     * Pull the FAI number / IR number off a signable form so the stamp
+     * shows a real identifier in the center block.
+     */
+    private function extractIdentifier(Model $signable): ?string
+    {
+        if (isset($signable->fai_number)) {
+            return (string) $signable->fai_number;
+        }
+        if (isset($signable->ir_number)) {
+            return (string) $signable->ir_number;
+        }
+        return null;
     }
 }
