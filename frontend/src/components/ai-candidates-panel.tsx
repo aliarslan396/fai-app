@@ -84,12 +84,14 @@ export function AiCandidatesPanel({ planId, drawingId, pageNumber, onClose, onAc
   const [autoSelected, setAutoSelected] = useState<Set<number>>(new Set())
   const [reviewSelected, setReviewSelected] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  const [ocrQueued, setOcrQueued] = useState(false)
   const [accepting, setAccepting] = useState(false)
 
   const runDetection = async () => {
     if (!drawingId) return
     setLoading(true)
     setError(null)
+    setOcrQueued(false)
     setAutoList([])
     setReviewList([])
     setStats(null)
@@ -97,14 +99,23 @@ export function AiCandidatesPanel({ planId, drawingId, pageNumber, onClose, onAc
     setReviewSelected(new Set())
 
     try {
-      const { data } = await api.get(
-        `/plans/${planId}/drawings/${drawingId}/pages/${pageNumber}/auto-detect`
+      const res = await api.get(
+        `/plans/${planId}/drawings/${drawingId}/pages/${pageNumber}/auto-detect`,
+        { validateStatus: (s) => s < 500 }
       )
-      const auto: Candidate[] = data.auto_accept ?? []
-      const review: Candidate[] = data.review ?? []
+
+      // Backend returns 202 when it auto-queued OCR on the fly for a fresh page
+      if (res.status === 202 && res.data?.ocr_queued) {
+        setOcrQueued(true)
+        toast.info(res.data.message ?? "OCR is running (30-60s). Try again in a moment.")
+        return
+      }
+
+      const auto: Candidate[] = res.data.auto_accept ?? []
+      const review: Candidate[] = res.data.review ?? []
       setAutoList(auto)
       setReviewList(review)
-      setStats(data.stats ?? null)
+      setStats(res.data.stats ?? null)
       // Pre-tick everything in auto-accept
       setAutoSelected(new Set(auto.map((_, i) => i)))
 
@@ -198,7 +209,24 @@ export function AiCandidatesPanel({ planId, drawingId, pageNumber, onClose, onAc
             </div>
           )}
 
-          {!loading && error && (
+          {!loading && ocrQueued && (
+            <div className="rounded-md border border-amber-300 bg-amber-50/70 p-3 text-sm">
+              <div className="flex items-start gap-2">
+                <Loader2 className="mt-0.5 h-4 w-4 animate-spin text-amber-600" />
+                <div className="flex-1">
+                  <p className="font-medium text-amber-800">OCR running on this page</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Reading dimension text from the drawing. Takes about 30-60 seconds. Click Retry once it finishes.
+                  </p>
+                  <Button size="sm" variant="outline" className="mt-2" onClick={runDetection}>
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!loading && !ocrQueued && error && (
             <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />

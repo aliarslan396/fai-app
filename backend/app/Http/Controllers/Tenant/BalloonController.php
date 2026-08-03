@@ -219,10 +219,16 @@ class BalloonController extends Controller
             ->firstOrFail();
 
         if (! $page->ocr_text || empty($page->ocr_text['blocks'] ?? [])) {
+            // Auto-queue OCR so the user isn't stuck on a dead-end error —
+            // OCR sidecar returns in 30-60s, then a Retry click succeeds.
+            $tenantId = tenant('id');
+            \App\Jobs\RunOcrOnDrawingPage::dispatch($tenantId, $page->id);
+
             return response()->json([
-                'message' => 'No OCR data on this page yet. Run OCR first.',
+                'message' => 'OCR is running on this page (takes 30-60 seconds). Wait a moment then click Retry.',
+                'ocr_queued' => true,
                 'candidates' => [],
-            ], 409);
+            ], 202);
         }
 
         $blocks = $page->ocr_text['blocks'];
