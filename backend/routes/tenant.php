@@ -182,6 +182,11 @@ Route::prefix('api/v1')
                 Route::patch('{id}', [FaiForm1Controller::class, 'update']);
                 Route::post('{id}/sync-from-balloons', [FaiForm1Controller::class, 'syncFromBalloons']);
 
+                // Form 1 status lifecycle (doc 3.4: In Work → Submitted → Returned → Accepted)
+                Route::post('{id}/submit', [FaiForm1Controller::class, 'submit']);
+                Route::post('{id}/return', [FaiForm1Controller::class, 'returnForRework']);
+                Route::post('{id}/reopen', [FaiForm1Controller::class, 'reopen']);
+
                 // Form 1 Assembly Index rows
                 Route::post('{id}/index', [FaiForm1Controller::class, 'storeIndexRow']);
                 Route::delete('{id}/index/{row_id}', [FaiForm1Controller::class, 'destroyIndexRow']);

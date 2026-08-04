@@ -8,17 +8,21 @@ use App\Models\FaiForm1;
 use App\Models\FaiForm1Index;
 use App\Models\FaiForm2;
 use App\Models\InspectionSession;
+use App\Services\FaiStatusService;
 use App\Services\Form3SyncEngine;
 use App\Services\ReportNumberService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
+use RuntimeException;
 
 class FaiForm1Controller extends Controller
 {
     public function __construct(
         private ReportNumberService $numbers,
         private Form3SyncEngine $sync,
+        private FaiStatusService $statusService,
     ) {}
 
     /**
@@ -192,6 +196,75 @@ class FaiForm1Controller extends Controller
             ->delete();
 
         return response()->json(['message' => 'Index row deleted']);
+    }
+
+    /**
+     * Inspector submits the form to QA Manager for review.
+     * Transition: in_work OR returned → submitted.
+     */
+    public function submit(int $id): JsonResponse
+    {
+        $this->checkPermission('inspections.edit');
+
+        $form = FaiForm1::findOrFail($id);
+
+        try {
+            $form = $this->statusService->submit(request()->user(), $form);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['form1' => $form]);
+    }
+
+    /**
+     * QA Manager returns a submitted form with a written reason.
+     * Transition: submitted → returned.
+     */
+    public function returnForRework(Request $request, int $id): JsonResponse
+    {
+        $this->checkPermission('inspections.sign');
+
+        $data = $request->validate([
+            'reason' => 'required|string|min:5|max:2000',
+        ]);
+
+        $form = FaiForm1::findOrFail($id);
+
+        try {
+            $form = $this->statusService->returnForRework(request()->user(), $form, $data['reason']);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        }
+
+        return response()->json(['form1' => $form]);
+    }
+
+    /**
+     * Admin-only formal reopen of an accepted (locked) form.
+     * Transition: accepted → in_work. Cascades: unlocks form.
+     */
+    public function reopen(Request $request, int $id): JsonResponse
+    {
+        $this->checkPermission('tenant.settings'); // admin-only per doc
+
+        $data = $request->validate([
+            'reason' => 'required|string|min:5|max:2000',
+        ]);
+
+        $form = FaiForm1::findOrFail($id);
+
+        try {
+            $form = $this->statusService->reopen(request()->user(), $form, $data['reason']);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        }
+
+        return response()->json(['form1' => $form]);
     }
 
     private function checkPermission(string $permission): void

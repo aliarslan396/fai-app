@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AuditLog;
+use App\Models\FaiForm1;
 use App\Models\Signature;
 use App\Models\TenantUser;
 use Illuminate\Database\Eloquent\Model;
@@ -25,7 +26,10 @@ use RuntimeException;
  */
 class SignatureService
 {
-    public function __construct(private StampGenerator $stamper) {}
+    public function __construct(
+        private StampGenerator $stamper,
+        private FaiStatusService $faiStatus,
+    ) {}
 
     /**
      * @param  TenantUser  $user        User who is signing
@@ -94,6 +98,12 @@ class SignatureService
                     $updates['locked'] = true;
                 }
                 $signable->update($updates);
+
+                // Doc 3.4: signing an AS9102 FAI transitions status to
+                // `accepted`. Signature is the ONLY path to acceptance.
+                if ($signable instanceof FaiForm1) {
+                    $this->faiStatus->markAcceptedFromSign($signable);
+                }
             }
 
             AuditLog::record('form.signed', [

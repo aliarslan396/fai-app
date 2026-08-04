@@ -36,6 +36,7 @@ class FaiForm3Controller extends Controller
                 'id' => $form1->id,
                 'fai_number' => $form1->fai_number,
                 'status' => $form1->status,
+                'returned_reason' => $form1->returned_reason,
                 'locked' => $form1->isLocked(),
             ],
             'rows' => $rows,

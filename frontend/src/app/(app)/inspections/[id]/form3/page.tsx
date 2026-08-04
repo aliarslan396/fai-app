@@ -29,6 +29,7 @@ import { SignHistoryPanel } from "@/components/sign-history-panel"
 import { ExportMenu } from "@/components/export-menu"
 import { CreateNcrDialog } from "@/components/ncr/create-ncr-dialog"
 import { RelatedNcrsPanel, type RelatedNcrsPanelHandle } from "@/components/ncr/related-ncrs-panel"
+import { FaiStatusControls } from "@/components/fai-status-controls"
 import { useSignatures } from "@/lib/signatures"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
@@ -64,7 +65,7 @@ interface Form3Row {
 }
 
 interface Form3Response {
-  form1: { id: number; fai_number: string; status: string; locked: boolean }
+  form1: { id: number; fai_number: string; status: string; locked: boolean; returned_reason?: string | null }
   rows: Form3Row[]
   summary: {
     total: number
@@ -281,7 +282,7 @@ export default function Form3Page() {
       </div>
 
       <div className="flex items-start justify-between">
-        <div>
+        <div className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight">
             Form 3 — Characteristic Verification
           </h1>
@@ -292,6 +293,14 @@ export default function Form3Page() {
               <Badge variant="secondary" className="ml-2">LOCKED</Badge>
             )}
           </p>
+          <FaiStatusControls
+            formId={data.form1.id}
+            faiNumber={data.form1.fai_number}
+            status={data.form1.status}
+            returnedReason={data.form1.returned_reason}
+            allDone={data.summary.all_done}
+            onChanged={() => void fetchAll()}
+          />
         </div>
         <div className="flex items-center gap-2">
           <SignHistoryPanel signableType="FaiForm1" signableId={data.form1.id} />
