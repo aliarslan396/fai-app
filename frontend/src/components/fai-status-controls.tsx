@@ -42,6 +42,7 @@ interface Props {
   status: FaiStatus | string
   returnedReason?: string | null
   allDone: boolean
+  locked?: boolean
   onChanged: () => void
 }
 
@@ -60,7 +61,7 @@ interface Props {
  *     (Accept happens via Sign & Lock button — separate flow)
  *   - Admin (tenant.settings) on accepted: Reopen for Edit
  */
-export function FaiStatusControls({ formId, faiNumber, status, returnedReason, allDone, onChanged }: Props) {
+export function FaiStatusControls({ formId, faiNumber, status, returnedReason, allDone, locked = false, onChanged }: Props) {
   const { hasPermission } = useAuthStore()
   const canSubmit = hasPermission("inspections.edit")
   const canReturn = hasPermission("inspections.sign")
@@ -92,7 +93,7 @@ export function FaiStatusControls({ formId, faiNumber, status, returnedReason, a
           {STATUS_LABEL[s] ?? s}
         </Badge>
 
-        {(s === "in_work" || s === "returned") && canSubmit && (
+        {(s === "in_work" || s === "returned") && canSubmit && !locked && (
           <Button
             size="sm"
             variant="outline"

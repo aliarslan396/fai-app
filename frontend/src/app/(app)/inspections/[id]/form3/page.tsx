@@ -299,6 +299,7 @@ export default function Form3Page() {
             status={data.form1.status}
             returnedReason={data.form1.returned_reason}
             allDone={data.summary.all_done}
+            locked={data.form1.locked}
             onChanged={() => void fetchAll()}
           />
         </div>

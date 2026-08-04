@@ -49,6 +49,10 @@ class FaiStatusService
      */
     public function submit(TenantUser $user, FaiForm1 $form): FaiForm1
     {
+        if ($form->isLocked()) {
+            throw new RuntimeException('Cannot submit a locked form.');
+        }
+
         if (! in_array($form->status, [self::STATUS_IN_WORK, self::STATUS_RETURNED], true)) {
             throw new RuntimeException("Cannot submit form in status: {$form->status}");
         }
