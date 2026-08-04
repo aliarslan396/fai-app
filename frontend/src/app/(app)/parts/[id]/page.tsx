@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   ArrowLeft, Pencil, Upload, FileText, Trash2, Loader2, Download, AlertTriangle,
-  ClipboardList, Plus,
+  ClipboardList, Plus, RotateCw,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -328,6 +328,15 @@ export default function PartDetailPage() {
                   key={d.id}
                   drawing={d}
                   onDelete={canDelete ? () => setDeleteTarget(d) : undefined}
+                  onRetry={canUpload ? async () => {
+                    try {
+                      await api.post(`/drawings/${d.id}/retry`)
+                      toast.success("Reprocessed")
+                      fetchPart()
+                    } catch (err) {
+                      toast.error(getErrorMessage(err, "Retry failed"))
+                    }
+                  } : undefined}
                 />
               ))}
             </div>
@@ -396,10 +405,13 @@ async function downloadDrawing(drawing: Drawing) {
 function DrawingCard({
   drawing,
   onDelete,
+  onRetry,
 }: {
   drawing: Drawing
   onDelete?: () => void
+  onRetry?: () => void | Promise<void>
 }) {
+  const [retrying, setRetrying] = useState(false)
   const showThumb = drawing.status === "processed" && drawing.page_count > 0
 
   return (
@@ -454,6 +466,23 @@ function DrawingCard({
             >
               <Download className="h-3.5 w-3.5" />
             </Button>
+            {onRetry && drawing.status === "failed" && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-amber-600 hover:text-amber-700"
+                disabled={retrying}
+                title="Retry processing"
+                onClick={async () => {
+                  setRetrying(true)
+                  try { await onRetry() } finally { setRetrying(false) }
+                }}
+              >
+                {retrying
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <RotateCw className="h-3.5 w-3.5" />}
+              </Button>
+            )}
             {onDelete && (
               <Button
                 variant="ghost"

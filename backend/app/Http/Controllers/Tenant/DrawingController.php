@@ -150,6 +150,54 @@ class DrawingController extends Controller
     }
 
     /**
+     * Retry processing a failed drawing without re-uploading. Wipes any
+     * partially rendered pages, resets status, re-runs the pipeline.
+     */
+    public function retry(int $id, Request $request): JsonResponse
+    {
+        $this->checkPermission('drawings.create');
+
+        $drawing = Drawing::findOrFail($id);
+
+        if ($drawing->status === 'processing') {
+            return response()->json(['message' => 'Drawing is currently processing'], 409);
+        }
+
+        $tenantKey = tenant()?->getTenantKey() ?? 'default';
+        $pageDir = storage_path("app/drawings/{$tenantKey}/{$drawing->id}");
+        if (is_dir($pageDir)) {
+            $this->rmrf($pageDir);
+        }
+        $drawing->pages()->delete();
+        $drawing->update([
+            'status' => 'pending',
+            'processing_error' => null,
+            'processed_at' => null,
+            'page_count' => 0,
+        ]);
+
+        try {
+            $this->processor->process($drawing);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Retry failed',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+
+        AuditLog::record('drawing.reprocessed', [
+            'subject_type' => Drawing::class,
+            'subject_id' => $drawing->id,
+            'meta' => ['filename' => $drawing->original_filename],
+        ]);
+
+        return response()->json([
+            'message' => 'Reprocessed',
+            'drawing' => $drawing->fresh(),
+        ]);
+    }
+
+    /**
      * Serve a rendered page image (full size).
      */
     public function pageImage(int $id, int $page): Response|BinaryFileResponse

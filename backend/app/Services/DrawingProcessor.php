@@ -88,13 +88,26 @@ class DrawingProcessor
             $proc->setTimeout(120);
             $proc->mustRun();
 
-            $renderedPath = "{$pageBase}-{$page}.png";
-            if (! file_exists($renderedPath)) {
-                // pdftoppm may use 1-indexed suffix without zero-padding
-                $renderedPath = "{$pageBase}-1.png";
+            // pdftoppm output naming is version + page-count dependent:
+            //   PDFs with 1-9 pages  -> "{prefix}-1.png"
+            //   PDFs with 10-99 pgs  -> "{prefix}-01.png"
+            //   PDFs with 100+ pgs   -> "{prefix}-001.png"
+            //   Some poppler builds  -> "{prefix}.png" (no suffix, single-page)
+            // Glob covers all forms without guessing.
+            $renderedPath = null;
+            $candidates = glob("{$pageBase}-*.png") ?: [];
+            if (empty($candidates) && file_exists("{$pageBase}.png")) {
+                $candidates = ["{$pageBase}.png"];
             }
-            if (! file_exists($renderedPath)) {
-                throw new \RuntimeException("pdftoppm did not produce expected output for page {$page}");
+            if (! empty($candidates)) {
+                $renderedPath = $candidates[0];
+            }
+            if ($renderedPath === null || ! file_exists($renderedPath)) {
+                $found = array_map('basename', glob("{$absDir}/*") ?: []);
+                throw new \RuntimeException(
+                    "pdftoppm did not produce expected output for page {$page}. Found files: "
+                    . (empty($found) ? '(none)' : implode(', ', $found))
+                );
             }
             rename($renderedPath, $imagePath);
 

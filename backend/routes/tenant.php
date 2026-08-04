@@ -259,6 +259,7 @@ Route::prefix('api/v1')
                 Route::post('/', [DrawingController::class, 'store']);
                 Route::get('{id}', [DrawingController::class, 'show']);
                 Route::delete('{id}', [DrawingController::class, 'destroy']);
+                Route::post('{id}/retry', [DrawingController::class, 'retry']);
                 Route::get('{id}/download', [DrawingController::class, 'download']);
                 Route::get('{id}/pages/{page}/image', [DrawingController::class, 'pageImage']);
                 Route::get('{id}/pages/{page}/thumbnail', [DrawingController::class, 'pageThumbnail']);
