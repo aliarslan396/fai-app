@@ -27,6 +27,17 @@ interface Kpis {
   open_ncrs: number
   inspection_plans: number
   gauges_due: number
+  pending_reviews?: number
+}
+
+interface PendingReview {
+  id: number
+  fai_number: string
+  part: { id: number; part_number: string; revision: string } | null
+  session_id: number
+  submitted_by: string | null
+  updated_at: string
+  href: string
 }
 
 interface RecentSession {
@@ -53,6 +64,7 @@ interface DashboardData {
   kpis: Kpis
   recent_inspections: RecentSession[]
   pending_actions: PendingAction[]
+  pending_reviews?: PendingReview[]
   scope: "org" | "self"
 }
 
@@ -308,6 +320,66 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Pending Reviews — QA Manager queue of submitted FAI forms awaiting acceptance */}
+      {hasPermission("inspections.sign") && (
+        <Card className="border-blue-200 bg-blue-50/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-blue-700" />
+              Pending My Review
+              {(data?.kpis?.pending_reviews ?? 0) > 0 && (
+                <span className="ml-1 rounded-full bg-blue-600 px-2 py-0.5 text-xs font-medium text-white">
+                  {data?.kpis?.pending_reviews}
+                </span>
+              )}
+            </CardTitle>
+            <CardDescription>FAI forms submitted by inspectors, waiting for QA Manager review + sign</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex h-24 items-center justify-center">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : !data?.pending_reviews || data.pending_reviews.length === 0 ? (
+              <EmptyState
+                icon={Inbox}
+                title="No forms awaiting review"
+                description="All submitted forms have been reviewed."
+              />
+            ) : (
+              <ul className="space-y-1">
+                {data.pending_reviews.map((r) => (
+                  <li key={r.id}>
+                    <Link
+                      href={r.href}
+                      className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-blue-100/50"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+                        <AlertTriangle className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium">
+                          <span className="font-mono">{r.fai_number}</span>
+                          {r.part && (
+                            <span className="ml-2 text-muted-foreground">
+                              {r.part.part_number} Rev {r.part.revision}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          Submitted{r.submitted_by ? ` by ${r.submitted_by}` : ""} · {relativeTime(r.updated_at)}
+                        </div>
+                      </div>
+                      <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
