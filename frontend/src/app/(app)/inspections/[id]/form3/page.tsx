@@ -315,7 +315,12 @@ export default function Form3Page() {
             {syncing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             Re-sync from plan
           </Button>
-          {canSign && (
+          {/* Sign & Lock is the ACCEPT action per doc 3.4. Only exposed once
+              the form is in `submitted` status (or already locked, to keep
+              the "Signed" pill visible). Inspector-then-Manager review is
+              enforced via the status lifecycle — sign is not available on
+              in_work or returned forms. */}
+          {canSign && (data.form1.status === "submitted" || data.form1.locked) && (
           <Button
             size="sm"
             onClick={() => setSignDialogOpen(true)}

@@ -57,6 +57,13 @@ class SignatureService
             throw new RuntimeException('Form is already locked — cannot sign again');
         }
 
+        // Doc 3.4: FAI signing = acceptance. Requires status=submitted so
+        // the QA Manager review step cannot be bypassed. `in_work` and
+        // `returned` must go through Submit for Review first.
+        if ($signable instanceof FaiForm1 && ! in_array($signable->status, ['submitted', 'accepted'], true)) {
+            throw new RuntimeException("Cannot sign — form must be submitted for review first. Current status: {$signable->status}");
+        }
+
         if (! Hash::check($password, $user->password)) {
             throw new RuntimeException('Password verification failed');
         }
