@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   ArrowLeft, MousePointer, Crosshair, ListOrdered, Upload, Loader2, X, FileText,
-  ZoomIn, ZoomOut, Maximize2, Sparkles,
+  ZoomIn, ZoomOut, Maximize2, Sparkles, CheckCircle2, Archive,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -268,6 +268,40 @@ export default function PlanWorkspacePage() {
     }
   }
 
+  const [publishing, setPublishing] = useState(false)
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false)
+  const [retireConfirmOpen, setRetireConfirmOpen] = useState(false)
+
+  const handlePublish = async () => {
+    if (!plan) return
+    setPublishing(true)
+    setPublishConfirmOpen(false)
+    try {
+      await api.post(`/plans/${plan.id}/publish`)
+      toast.success(`${plan.plan_number} published — inspectors can now use it`)
+      fetchPlan()
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Publish failed"))
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  const handleRetire = async () => {
+    if (!plan) return
+    setPublishing(true)
+    setRetireConfirmOpen(false)
+    try {
+      await api.post(`/plans/${plan.id}/retire`)
+      toast.success(`${plan.plan_number} retired — hidden from new inspections`)
+      fetchPlan()
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Retire failed"))
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -380,6 +414,30 @@ export default function PlanWorkspacePage() {
             {renumbering ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <ListOrdered className="mr-1 h-3.5 w-3.5" />}
             Renumber
           </Button>
+
+          {canEdit && plan.status === "draft" && (
+            <Button
+              size="sm"
+              onClick={() => setPublishConfirmOpen(true)}
+              disabled={publishing || balloons.length === 0}
+              title={balloons.length === 0 ? "Place at least one balloon before publishing" : ""}
+            >
+              {publishing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1 h-3.5 w-3.5" />}
+              Publish
+            </Button>
+          )}
+          {canEdit && plan.status === "active" && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setRetireConfirmOpen(true)}
+              disabled={publishing}
+            >
+              {publishing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Archive className="mr-1 h-3.5 w-3.5" />}
+              Retire
+            </Button>
+          )}
+
           <span className="text-xs text-muted-foreground">
             {balloons.length} balloon{balloons.length !== 1 ? "s" : ""} · {plan.characteristic_count} char{plan.characteristic_count !== 1 ? "s" : ""}
           </span>
@@ -628,6 +686,45 @@ export default function PlanWorkspacePage() {
             <AlertDialogCancel disabled={renumbering}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmRenumber} disabled={renumbering}>
               {renumbering ? "Renumbering..." : "Renumber"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Publish this plan?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Publishing flips this plan from <strong>draft</strong> to <strong>active</strong>. Inspectors
+              will be able to pick it when creating new inspections. Existing balloons + tolerances
+              become the official spec — review carefully before publishing.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={publishing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handlePublish} disabled={publishing}>
+              {publishing ? "Publishing..." : "Publish"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={retireConfirmOpen} onOpenChange={setRetireConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Retire this plan?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Retiring flips this plan from <strong>active</strong> to <strong>superseded</strong>.
+              Historical inspections against this plan stay intact for the audit trail, but the
+              plan disappears from the new-inspection picker. Usually done when a new part
+              revision replaces this one.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={publishing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRetire} disabled={publishing}>
+              {publishing ? "Retiring..." : "Retire"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

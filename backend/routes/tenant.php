@@ -143,6 +143,10 @@ Route::prefix('api/v1')
                 Route::patch('{id}', [InspectionPlanController::class, 'update']);
                 Route::delete('{id}', [InspectionPlanController::class, 'destroy']);
 
+                // Plan lifecycle (doc 3.1: Draft → Active → Superseded)
+                Route::post('{id}/publish', [InspectionPlanController::class, 'publish']);
+                Route::post('{id}/retire', [InspectionPlanController::class, 'retire']);
+
                 // Balloons under a plan
                 Route::get('{id}/balloons', [BalloonController::class, 'index']);
                 Route::post('{id}/balloons', [BalloonController::class, 'store']);

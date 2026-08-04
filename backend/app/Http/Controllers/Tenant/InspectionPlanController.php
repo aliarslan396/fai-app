@@ -133,6 +133,75 @@ class InspectionPlanController extends Controller
         return response()->json(['message' => 'Plan deleted']);
     }
 
+    /**
+     * Publish a plan: draft → active. Only Active plans are selectable when
+     * inspectors start a new inspection (doc 3.1 rule enforcement).
+     *
+     * Requires the plan to have at least one balloon so we don't publish
+     * empty templates that would produce empty inspection forms.
+     */
+    public function publish(int $id): JsonResponse
+    {
+        $this->checkPermission('plans.edit');
+
+        $plan = InspectionPlan::withCount('balloons')->findOrFail($id);
+
+        if ($plan->status === 'active') {
+            return response()->json(['message' => 'Plan is already active.'], 422);
+        }
+        if ($plan->status === 'superseded') {
+            return response()->json(['message' => 'Cannot publish a superseded plan — create a new revision instead.'], 422);
+        }
+        if ($plan->balloons_count === 0) {
+            return response()->json(['message' => 'Cannot publish a plan with zero balloons. Place at least one balloon first.'], 422);
+        }
+
+        $oldStatus = $plan->status;
+        $plan->update(['status' => 'active']);
+
+        AuditLog::record('plan.published', [
+            'subject_type' => InspectionPlan::class,
+            'subject_id' => $plan->id,
+            'meta' => [
+                'plan_number' => $plan->plan_number,
+                'from' => $oldStatus,
+                'balloons_count' => $plan->balloons_count,
+                'user_id' => request()->user()->id,
+            ],
+        ]);
+
+        return response()->json(['plan' => $plan->fresh()]);
+    }
+
+    /**
+     * Retire a plan: active → superseded. Keeps historical inspections
+     * working (they still reference the plan for audit trail) but hides
+     * it from the new-inspection picker.
+     */
+    public function retire(int $id): JsonResponse
+    {
+        $this->checkPermission('plans.edit');
+
+        $plan = InspectionPlan::findOrFail($id);
+
+        if ($plan->status !== 'active') {
+            return response()->json(['message' => "Cannot retire a plan in status: {$plan->status}"], 422);
+        }
+
+        $plan->update(['status' => 'superseded']);
+
+        AuditLog::record('plan.retired', [
+            'subject_type' => InspectionPlan::class,
+            'subject_id' => $plan->id,
+            'meta' => [
+                'plan_number' => $plan->plan_number,
+                'user_id' => request()->user()->id,
+            ],
+        ]);
+
+        return response()->json(['plan' => $plan->fresh()]);
+    }
+
     private function checkPermission(string $permission): void
     {
         $user = request()->user();
