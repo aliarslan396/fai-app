@@ -107,6 +107,18 @@ export default function PartDetailPage() {
     }
   }, [params.id])
 
+  // Silent refresh — used by the polling loop. Only re-fetches drawings
+  // and skips setLoading so the whole page doesn't flash a skeleton
+  // every 3s while a background render is in progress.
+  const refreshDrawings = useCallback(async () => {
+    try {
+      const res = await api.get("/drawings", { params: { part_id: params.id, per_page: 100 } })
+      setDrawings(res.data.data || [])
+    } catch {
+      // Silent — polling errors shouldn't nag the user.
+    }
+  }, [params.id])
+
   useEffect(() => {
     fetchPart()
   }, [fetchPart])
@@ -118,9 +130,9 @@ export default function PartDetailPage() {
       (d) => d.status === "pending" || d.status === "processing" || d.status === "uploaded"
     )
     if (!hasWorkInFlight) return
-    const t = setInterval(() => { fetchPart() }, 3000)
+    const t = setInterval(() => { refreshDrawings() }, 3000)
     return () => clearInterval(t)
-  }, [drawings, fetchPart])
+  }, [drawings, refreshDrawings])
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0 || !part) return
