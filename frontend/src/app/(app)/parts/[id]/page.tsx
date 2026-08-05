@@ -42,6 +42,7 @@ interface Drawing {
   file_size: number
   processing_error: string | null
   created_at: string
+  updated_at: string
   uploader: { id: number; name: string; email: string } | null
 }
 
@@ -478,7 +479,10 @@ function DrawingCard({
             >
               <Download className="h-3.5 w-3.5" />
             </Button>
-            {onRetry && drawing.status === "failed" && (
+            {onRetry && (drawing.status === "failed" || (
+              (drawing.status === "processing" || drawing.status === "pending") &&
+              (Date.now() - new Date(drawing.updated_at).getTime()) > 3 * 60 * 1000
+            )) && (
               <Button
                 variant="ghost"
                 size="icon"

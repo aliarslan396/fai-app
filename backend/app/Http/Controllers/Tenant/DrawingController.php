@@ -171,7 +171,15 @@ class DrawingController extends Controller
 
         $drawing = Drawing::findOrFail($id);
 
-        if ($drawing->status === 'processing') {
+        // Block only if a job is *actually* running — i.e. status flipped
+        // to processing recently. Anything older than 5 min is stale (queue
+        // worker died / job SIGTERMed / container restart mid-render) and
+        // should be re-runnable, otherwise Terry has no way out.
+        $isFreshlyRunning = $drawing->status === 'processing'
+            && $drawing->updated_at
+            && $drawing->updated_at->diffInMinutes(now()) < 5;
+
+        if ($isFreshlyRunning) {
             return response()->json(['message' => 'Drawing is currently processing'], 409);
         }
 

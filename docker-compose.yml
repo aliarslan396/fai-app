@@ -98,7 +98,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: php artisan queue:work --tries=3 --timeout=120
+    command: php artisan queue:work --tries=3 --timeout=900
     networks:
       - fai_network
 
