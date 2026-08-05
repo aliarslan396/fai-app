@@ -329,7 +329,12 @@ class BalloonController extends Controller
                 preg_match('/±|Ø|⌀|∅|°|⊥|⏥|⌭|⌒|⌓|∠|∥|◎|≡|↗|⇗|○|⏤/u', $t) ||
                 preg_match('/\bR\.?\d/u', $t) ||
                 preg_match('/\d+\.\d+\s*[±+\-\/]/u', $t) ||
-                preg_match('/^\s*[\(\[\{]\s*\.?\d+(?:\.\d+)?\s*[\)\]\}]\s*$/u', $t) ||
+                // Reference dim in parens MUST have a decimal point —
+                // "(2.0)" / "(27.73)" are dims; "(208)" / "(540)" are
+                // Boeing find-numbers pointing at parts list, not dims.
+                preg_match('/^\s*[\(\[\{]\s*\.?\d+\.\d+\s*[\)\]\}]\s*$/u', $t) ||
+                // Bare decimals — same rule, require the decimal to make
+                // it look like a measurement, not a page/zone counter.
                 preg_match('/^\.\d{2,}$/u', $t) ||
                 preg_match('/^\d+\.\d{2,}$/u', $t)
             ) {
