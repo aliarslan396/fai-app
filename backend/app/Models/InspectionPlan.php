@@ -38,9 +38,18 @@ class InspectionPlan extends Model
         return $this->belongsTo(Part::class);
     }
 
+    /**
+     * Drawings this plan can reference. Every drawing uploaded for the
+     * parent part is available in every plan for that part — users
+     * shouldn't have to re-upload the same PDF once for the Part page
+     * and again inside each plan's workspace. The plan_id column on
+     * Drawing is retained for future per-plan scoping but is not
+     * required for a document to show up here.
+     */
     public function documents()
     {
-        return $this->hasMany(Drawing::class, 'plan_id')->orderBy('sort_order');
+        return $this->hasMany(Drawing::class, 'part_id', 'part_id')
+            ->orderBy('sort_order');
     }
 
     public function balloons()
