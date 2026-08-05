@@ -53,6 +53,7 @@ interface DrawingDetail {
   drawing_number: string | null
   revision: string | null
   page_count: number
+  ocr_pages_done?: number
   status: string
   processing_error: string | null
   file_size: number
@@ -129,6 +130,20 @@ export default function DrawingViewerPage() {
   useEffect(() => {
     fetchDrawing()
   }, [fetchDrawing])
+
+  // Poll silently while OCR is still running so the header banner
+  // advances without the user having to reload the page.
+  useEffect(() => {
+    if (!drawing) return
+    if (drawing.ocr_pages_done === undefined || drawing.ocr_pages_done >= drawing.page_count) return
+    const t = setInterval(() => {
+      api
+        .get(`/drawings/${params.id}`)
+        .then((res) => setDrawing(res.data.drawing))
+        .catch(() => {})
+    }, 5000)
+    return () => clearInterval(t)
+  }, [drawing, params.id])
 
   useEffect(() => {
     setImageLoading(true)
@@ -237,6 +252,23 @@ export default function DrawingViewerPage() {
           Download original
         </Button>
       </div>
+
+      {drawing.ocr_pages_done !== undefined && drawing.ocr_pages_done < drawing.page_count && (
+        <div className="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="font-medium">OCR running</span>
+          <span className="text-amber-700">
+            {drawing.ocr_pages_done} of {drawing.page_count} pages processed —
+            pages without OCR yet will show an amber banner when you toggle the overlay
+          </span>
+          <div className="ml-auto h-1.5 w-40 overflow-hidden rounded-full bg-amber-200">
+            <div
+              className="h-full bg-amber-500 transition-all"
+              style={{ width: `${Math.round((drawing.ocr_pages_done / drawing.page_count) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-1 gap-4 overflow-hidden">
         {/* Thumbnails sidebar */}

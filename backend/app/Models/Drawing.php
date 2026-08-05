@@ -34,7 +34,7 @@ class Drawing extends Model
         'processed_at' => 'datetime',
     ];
 
-    protected $appends = ['pages_rendered'];
+    protected $appends = ['pages_rendered', 'ocr_pages_done'];
 
     /**
      * Live count of DrawingPage rows so the UI can show progress
@@ -47,6 +47,16 @@ class Drawing extends Model
             return (int) $this->attributes['pages_count'];
         }
         return $this->pages()->count();
+    }
+
+    /**
+     * Live count of pages that have finished OCR. Used by the UI to
+     * show "OCR X/N" progress. OCR runs sequentially per page after
+     * rasterization finishes, so this lags pages_rendered.
+     */
+    public function getOcrPagesDoneAttribute(): int
+    {
+        return $this->pages()->whereNotNull('ocr_completed_at')->count();
     }
 
     public function part()

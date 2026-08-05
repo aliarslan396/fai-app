@@ -39,6 +39,7 @@ interface Drawing {
   revision: string | null
   page_count: number
   pages_rendered?: number
+  ocr_pages_done?: number
   status: "pending" | "uploaded" | "processing" | "processed" | "failed"
   file_size: number
   processing_error: string | null
@@ -127,7 +128,13 @@ export default function PartDetailPage() {
   // Backend flips status pending -> processing -> processed | failed.
   useEffect(() => {
     const hasWorkInFlight = drawings.some(
-      (d) => d.status === "pending" || d.status === "processing" || d.status === "uploaded"
+      (d) =>
+        d.status === "pending" ||
+        d.status === "processing" ||
+        d.status === "uploaded" ||
+        (d.status === "processed" &&
+          d.ocr_pages_done !== undefined &&
+          d.ocr_pages_done < d.page_count)
     )
     if (!hasWorkInFlight) return
     const t = setInterval(() => { refreshDrawings() }, 3000)
@@ -491,6 +498,21 @@ function DrawingCard({
             {drawing.status}
           </Badge>
         </div>
+        {drawing.status === "processed" &&
+          drawing.page_count > 0 &&
+          drawing.ocr_pages_done !== undefined &&
+          drawing.ocr_pages_done < drawing.page_count && (
+          <div className="flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>OCR {drawing.ocr_pages_done}/{drawing.page_count} pages</span>
+            <div className="ml-auto h-1 flex-1 max-w-[60px] overflow-hidden rounded-full bg-amber-200">
+              <div
+                className="h-full bg-amber-500 transition-all"
+                style={{ width: `${Math.round((drawing.ocr_pages_done / drawing.page_count) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
             {drawing.page_count} {drawing.page_count === 1 ? "page" : "pages"} ·{" "}
