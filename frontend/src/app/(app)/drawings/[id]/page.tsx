@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Download, Loader2, ZoomIn, ZoomOut, Maximize2, Minimize2,
-  Eye, EyeOff,
+  Eye, EyeOff, CheckCircle2,
 } from "lucide-react"
 
 import { Card } from "@/components/ui/card"
@@ -253,21 +253,28 @@ export default function DrawingViewerPage() {
         </Button>
       </div>
 
-      {drawing.ocr_pages_done !== undefined && drawing.ocr_pages_done < drawing.page_count && (
-        <div className="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="font-medium">OCR running</span>
-          <span className="text-amber-700">
-            {drawing.ocr_pages_done} of {drawing.page_count} pages processed —
-            pages without OCR yet will show an amber banner when you toggle the overlay
-          </span>
-          <div className="ml-auto h-1.5 w-40 overflow-hidden rounded-full bg-amber-200">
-            <div
-              className="h-full bg-amber-500 transition-all"
-              style={{ width: `${Math.round((drawing.ocr_pages_done / drawing.page_count) * 100)}%` }}
-            />
+      {drawing.ocr_pages_done !== undefined && drawing.page_count > 0 && (
+        drawing.ocr_pages_done < drawing.page_count ? (
+          <div className="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="font-medium">OCR running</span>
+            <span className="text-amber-700">
+              {drawing.ocr_pages_done} of {drawing.page_count} pages processed —
+              Auto-detect works only on pages already OCR'd
+            </span>
+            <div className="ml-auto h-1.5 w-40 overflow-hidden rounded-full bg-amber-200">
+              <div
+                className="h-full bg-amber-500 transition-all"
+                style={{ width: `${Math.round((drawing.ocr_pages_done / drawing.page_count) * 100)}%` }}
+              />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+            <CheckCircle2 className="h-4 w-4" />
+            <span>OCR complete — all {drawing.page_count} pages ready for Auto-detect + inspection</span>
+          </div>
+        )
       )}
 
       <div className="flex flex-1 gap-4 overflow-hidden">

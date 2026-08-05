@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   ArrowLeft, Pencil, Upload, FileText, Trash2, Loader2, Download, AlertTriangle,
-  ClipboardList, Plus, RotateCw,
+  ClipboardList, Plus, RotateCw, CheckCircle2,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -501,18 +501,23 @@ function DrawingCard({
         {drawing.status === "processed" &&
           drawing.page_count > 0 &&
           drawing.ocr_pages_done !== undefined &&
-          drawing.ocr_pages_done < drawing.page_count && (
-          <div className="flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>OCR {drawing.ocr_pages_done}/{drawing.page_count} pages</span>
-            <div className="ml-auto h-1 flex-1 max-w-[60px] overflow-hidden rounded-full bg-amber-200">
-              <div
-                className="h-full bg-amber-500 transition-all"
-                style={{ width: `${Math.round((drawing.ocr_pages_done / drawing.page_count) * 100)}%` }}
-              />
+          (drawing.ocr_pages_done < drawing.page_count ? (
+            <div className="flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>OCR {drawing.ocr_pages_done}/{drawing.page_count} pages</span>
+              <div className="ml-auto h-1 flex-1 max-w-[60px] overflow-hidden rounded-full bg-amber-200">
+                <div
+                  className="h-full bg-amber-500 transition-all"
+                  style={{ width: `${Math.round((drawing.ocr_pages_done / drawing.page_count) * 100)}%` }}
+                />
+              </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="flex items-center gap-2 rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+              <CheckCircle2 className="h-3 w-3" />
+              <span>OCR complete — ready for inspection</span>
+            </div>
+          ))}
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
             {drawing.page_count} {drawing.page_count === 1 ? "page" : "pages"} ·{" "}

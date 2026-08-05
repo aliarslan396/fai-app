@@ -40,7 +40,7 @@ interface PlanDocument {
   page_count: number
   status: string
   sort_order: number
-  pages: { id: number; page_number: number; width: number; height: number; thumbnail_path: string | null }[]
+  pages: { id: number; page_number: number; width: number; height: number; thumbnail_path: string | null; ocr_completed_at: string | null }[]
 }
 
 interface Plan {
@@ -136,6 +136,23 @@ export default function PlanWorkspacePage() {
   }, [fetchPlan])
 
   const activeDoc = plan?.documents.find((d) => d.id === activeDocId) ?? null
+  const activePageOcrDone = !!activeDoc?.pages.find((p) => p.page_number === activePage)?.ocr_completed_at
+
+  // Silent poll: refresh only the plan payload (which brings updated
+  // per-page ocr_completed_at) whenever the active page hasn't been
+  // OCR'd yet. Auto-detect button flips from "waiting" to enabled
+  // without the user having to reload.
+  useEffect(() => {
+    if (!plan || !activeDoc) return
+    if (activePageOcrDone) return
+    const t = setInterval(() => {
+      api
+        .get(`/plans/${params.id}`)
+        .then((res) => setPlan(res.data.plan))
+        .catch(() => {})
+    }, 5000)
+    return () => clearInterval(t)
+  }, [plan, activeDoc, activePageOcrDone, params.id])
   const pageBalloons = balloons.filter(
     (b) => b.fai_document_id === activeDocId && b.page_number === activePage
   )
@@ -404,11 +421,17 @@ export default function PlanWorkspacePage() {
               setSelectedBalloon(null)
               setAiPanelOpen(true)
             }}
-            disabled={!canEdit || !activeDoc}
-            title="AI scans this page for dimensional callouts and proposes balloons"
+            disabled={!canEdit || !activeDoc || !activePageOcrDone}
+            title={
+              !activeDoc
+                ? "Select a document first"
+                : !activePageOcrDone
+                  ? "OCR still processing this page — Auto-detect needs OCR text to work. Wait for the amber banner to disappear."
+                  : "AI scans this page for dimensional callouts and proposes balloons"
+            }
           >
             <Sparkles className="mr-1 h-3.5 w-3.5" />
-            Auto-detect
+            {activeDoc && !activePageOcrDone ? "Auto-detect (waiting OCR)" : "Auto-detect"}
           </Button>
           <Button variant="outline" size="sm" onClick={handleRenumber} disabled={!canEdit || renumbering || balloons.length === 0}>
             {renumbering ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <ListOrdered className="mr-1 h-3.5 w-3.5" />}
