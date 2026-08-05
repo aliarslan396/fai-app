@@ -332,7 +332,17 @@ def _score(parsed: dict[str, Any], original_text: str, is_ref: bool) -> float:
 # dominated by the handful of weird cases we still route to the LLM.
 
 # Trailing unit like "in", "mm", "IN", "MM" (whitespace optional).
-_UNIT_TAIL = r"\s*(in|IN|mm|MM|inch|INCH)?\s*$"
+# Also swallows common drilling / feature modifiers that trail real
+# aerospace callouts: THRU, NS (near side), FS (far side), TYP, REF,
+# BSC, MIN, MAX, DEEP, C'SINK, C'BORE, CBORE, CSK.
+_UNIT_TAIL = (
+    r"\s*(in|IN|mm|MM|inch|INCH)?"
+    r"(?:\s+(?:THRU|NS|FS|TYP|REF|BSC|MIN|MAX|DEEP|CBORE|CSINK|CSK|C'BORE|C'SINK))*"
+    r"\s*$"
+)
+
+# Optional leading multiplier prefix: "4X ", "2X ", "12X "
+_MULT_PREFIX = r"(?:(?:\d+\s*[xX])\s+)?"
 
 # Nominal number: 1.500, .500, 0.5, 45
 _NUM = r"[-+]?\d+(?:\.\d+)?|[-+]?\.\d+"
@@ -345,13 +355,29 @@ _TOL_SINGLE_AFTER = re.compile(rf"^\s*({_NUM})\s+({_NUM})\s*(?:{_NUM})?\s*$")
 # Whole-callout patterns.  Each returns a classification dict when it
 # matches, or None otherwise.
 
+# Diameter — accept a leading "4X " multiplier and either symmetric
+# (±) or asymmetric (+u/-l, +u -l) tolerance forms.
 _RE_DIAMETER = re.compile(
-    rf"^\s*(?:Ø|⌀|∅|DIA\.?\s*)\s*({_NUM})(?:\s*±\s*({_NUM}))?" + _UNIT_TAIL,
+    rf"^\s*{_MULT_PREFIX}(?:Ø|⌀|∅|DIA\.?\s*)\s*({_NUM})"
+    rf"(?:\s*±\s*({_NUM}))?"
+    rf"(?:\s*\+\s*({_NUM})\s*[/ ]\s*-\s*({_NUM}))?"
+    + _UNIT_TAIL,
     re.IGNORECASE,
 )
 _RE_RADIUS = re.compile(
-    rf"^\s*R\s*({_NUM})(?:\s*±\s*({_NUM}))?" + _UNIT_TAIL,
+    rf"^\s*{_MULT_PREFIX}R\s*({_NUM})"
+    rf"(?:\s*±\s*({_NUM}))?"
+    rf"(?:\s*\+\s*({_NUM})\s*[/ ]\s*-\s*({_NUM}))?"
+    + _UNIT_TAIL,
     re.IGNORECASE,
+)
+# Position tolerance callout: "Ø.010 A B C" or "⌀.010 A|B|C" — a
+# diameter with datum letters after, no ± required. GD&T position
+# feature control frames often OCR without the position symbol ⊕.
+_RE_POSITION_TOL = re.compile(
+    r"^\s*(?:Ø|⌀|∅)\s*"
+    rf"({_NUM})"
+    r"\s+([A-Z](?:[\s\|\-][A-Z])+)\s*$",
 )
 _RE_ANGLE = re.compile(
     rf"^\s*({_NUM})\s*°(?:\s*±\s*({_NUM})\s*°?)?\s*$",
@@ -421,14 +447,30 @@ def _regex_classify(text: str, is_ref: bool) -> dict[str, Any] | None:
             confidence=0.92,
         )
 
+    # Position tolerance BEFORE plain diameter (more specific pattern).
+    m = _RE_POSITION_TOL.match(text)
+    if m:
+        tol, datums_raw = m.group(1), m.group(2)
+        datums = [d for d in re.split(r"[\s\|\-]+", datums_raw) if d]
+        return _classified(
+            char_type="gdt",
+            gdt_symbol="⊕",
+            upper_tolerance=float(tol),
+            lower_tolerance=float(tol),
+            gdt_datums=datums,
+            confidence=0.9,
+        )
+
     m = _RE_DIAMETER.match(text)
     if m:
-        nom, tol = m.group(1), m.group(2)
+        nom, sym_tol, up, lo = m.group(1), m.group(2), m.group(3), m.group(4)
+        upper = float(sym_tol) if sym_tol else (float(up) if up else None)
+        lower = float(sym_tol) if sym_tol else (float(lo) if lo else None)
         return _classified(
             char_type="diameter",
             nominal=float(nom),
-            upper_tolerance=float(tol) if tol else None,
-            lower_tolerance=float(tol) if tol else None,
+            upper_tolerance=upper,
+            lower_tolerance=lower,
             unit=_infer_unit(nom),
             is_reference=is_ref,
             confidence=0.94,
@@ -436,12 +478,14 @@ def _regex_classify(text: str, is_ref: bool) -> dict[str, Any] | None:
 
     m = _RE_RADIUS.match(text)
     if m:
-        nom, tol = m.group(1), m.group(2)
+        nom, sym_tol, up, lo = m.group(1), m.group(2), m.group(3), m.group(4)
+        upper = float(sym_tol) if sym_tol else (float(up) if up else None)
+        lower = float(sym_tol) if sym_tol else (float(lo) if lo else None)
         return _classified(
             char_type="radius",
             nominal=float(nom),
-            upper_tolerance=float(tol) if tol else None,
-            lower_tolerance=float(tol) if tol else None,
+            upper_tolerance=upper,
+            lower_tolerance=lower,
             unit=_infer_unit(nom),
             is_reference=is_ref,
             confidence=0.94,
