@@ -314,10 +314,25 @@ class BalloonController extends Controller
         // lists / torque tables have digits everywhere but none of that
         // shape — bail without calling the LLM instead of chewing on 40
         // note fragments for 3 minutes.
+        // A dimensional callout will usually contain one of:
+        //   - explicit dim glyph:  ± Ø ⌀ ∅ ° GD&T symbols
+        //   - a radius:            R.07  R0.125
+        //   - a tolerance literal: "1.500 ±.005", "1.500 +.010/-.005"
+        //   - a REFERENCE dim in parens like "(2.0)" or "(27.73)"
+        //   - a BARE Boeing-style decimal like ".500" or "1.250"
+        //     (Tesseract routinely drops the Ø symbol on scanned drawings,
+        //     so we can't rely on it being present)
         $hasDimShape = false;
         foreach ($dimensionLike as $b) {
-            $t = (string) ($b['text'] ?? '');
-            if (preg_match('/±|Ø|⌀|∅|°|⊥|⏥|⌭|⌒|⌓|∠|∥|◎|≡|↗|⇗|○|⏤|\bR\d*\.\d+|\d+\.\d+\s*[±+\-\/]/u', $t)) {
+            $t = trim((string) ($b['text'] ?? ''));
+            if (
+                preg_match('/±|Ø|⌀|∅|°|⊥|⏥|⌭|⌒|⌓|∠|∥|◎|≡|↗|⇗|○|⏤/u', $t) ||
+                preg_match('/\bR\.?\d/u', $t) ||
+                preg_match('/\d+\.\d+\s*[±+\-\/]/u', $t) ||
+                preg_match('/^\s*[\(\[\{]\s*\.?\d+(?:\.\d+)?\s*[\)\]\}]\s*$/u', $t) ||
+                preg_match('/^\.\d{2,}$/u', $t) ||
+                preg_match('/^\d+\.\d{2,}$/u', $t)
+            ) {
                 $hasDimShape = true;
                 break;
             }
