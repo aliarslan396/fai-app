@@ -307,6 +307,21 @@ class BalloonController extends Controller
             ]);
         }
 
+        // Hard cap so Ollama on the shared CPU droplet doesn't hang the
+        // request for 10+ minutes. llama3.2:3b is ~3-8s per snippet on
+        // CPU; 40 keeps worst case around 3-5 min. Rank by "dimension
+        // score" so we keep the most promising blocks when we have to
+        // trim (blocks with GD&T glyphs, ± / diameter, longer numeric
+        // strings score highest).
+        $maxBlocks = 40;
+        $totalDimensionLike = count($dimensionLike);
+        if ($totalDimensionLike > $maxBlocks) {
+            usort($dimensionLike, function ($a, $b) {
+                return $this->dimensionScore($b['text']) <=> $this->dimensionScore($a['text']);
+            });
+            $dimensionLike = array_slice($dimensionLike, 0, $maxBlocks);
+        }
+
         $texts = array_map(fn ($b) => $b['text'], $dimensionLike);
 
         try {
@@ -372,11 +387,30 @@ class BalloonController extends Controller
             'stats' => [
                 'total_ocr_blocks' => count($blocks),
                 'merged_blocks' => count($merged),
-                'dimension_like' => count($dimensionLike),
+                'dimension_like' => $totalDimensionLike,
+                'sent_to_ai' => count($dimensionLike),
+                'truncated' => $totalDimensionLike > $maxBlocks,
                 'auto_accepted' => count($autoAccept),
                 'needs_review' => count($review),
             ],
         ]);
+    }
+
+    /**
+     * Higher score = more likely to be a real dimensional callout.
+     * Used when we have to trim the block list before sending it to
+     * the LLM. Not a classifier — just a cheap ranker.
+     */
+    private function dimensionScore(string $text): int
+    {
+        $score = 0;
+        if (preg_match('/[⊕⊥⏥⌭⌒⌓∠∥◎≡↗⇗○⏤Ø∅]/u', $text)) $score += 100;
+        if (str_contains($text, '±')) $score += 80;
+        if (preg_match('/\d+\.\d+/', $text)) $score += 30;
+        if (preg_match('/°/', $text)) $score += 20;
+        if (preg_match('/\b(REF|MAX|MIN|TYP|BSC)\b/i', $text)) $score += 15;
+        $score += min(strlen($text), 40); // longer strings tend to be full callouts
+        return $score;
     }
 
     /**

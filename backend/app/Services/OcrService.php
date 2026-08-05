@@ -83,7 +83,11 @@ class OcrService
 
         try {
             $resp = $this->client()
-                ->timeout(600)  // llama3.2:3b on CPU can be ~5 sec/snippet
+                ->timeout(240)  // llama3.2:3b on CPU ~3-8s/snippet; caller
+                                // caps input at 40 snippets so worst case
+                                // stays under ~4 min. If we hit 240s here
+                                // the client sees a clean 503 instead of a
+                                // 10-min "AI scanning" hang.
                 ->asJson()
                 ->post('/classify-batch', ['texts' => array_values($texts)]);
 

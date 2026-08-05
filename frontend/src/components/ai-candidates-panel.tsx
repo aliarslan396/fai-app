@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Loader2, Sparkles, Check, X, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 
@@ -86,6 +86,22 @@ export function AiCandidatesPanel({ planId, drawingId, pageNumber, onClose, onAc
   const [error, setError] = useState<string | null>(null)
   const [ocrQueued, setOcrQueued] = useState(false)
   const [accepting, setAccepting] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    if (!loading) { setElapsed(0); return }
+    const start = Date.now()
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000)
+    return () => clearInterval(t)
+  }, [loading])
+
+  const cancelDetection = () => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    setLoading(false)
+    toast.info("Auto-detect cancelled")
+  }
 
   const runDetection = async () => {
     if (!drawingId) return
@@ -98,10 +114,14 @@ export function AiCandidatesPanel({ planId, drawingId, pageNumber, onClose, onAc
     setAutoSelected(new Set())
     setReviewSelected(new Set())
 
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     try {
       const res = await api.get(
         `/plans/${planId}/drawings/${drawingId}/pages/${pageNumber}/auto-detect`,
-        { validateStatus: (s) => s < 500 }
+        { validateStatus: (s) => s < 500, signal: controller.signal }
       )
 
       // Backend returns 202 when it auto-queued OCR on the fly for a fresh page
@@ -126,6 +146,12 @@ export function AiCandidatesPanel({ planId, drawingId, pageNumber, onClose, onAc
         toast.success(`AI found ${auto.length} high-confidence + ${review.length} for review`)
       }
     } catch (err) {
+      // AbortController fires "canceled" — user chose it, don't nag.
+      const errName = (err as { name?: string; code?: string })?.name
+      const errCode = (err as { code?: string })?.code
+      if (errName === "CanceledError" || errName === "AbortError" || errCode === "ERR_CANCELED") {
+        return
+      }
       const msg = getErrorMessage(err, "Auto-detect failed")
       setError(msg)
       toast.error(msg)
@@ -201,11 +227,19 @@ export function AiCandidatesPanel({ planId, drawingId, pageNumber, onClose, onAc
             <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
               <div>
-                <p className="text-sm font-medium">AI scanning page...</p>
+                <p className="text-sm font-medium">AI scanning page... ({elapsed}s)</p>
                 <p className="text-xs text-muted-foreground">
-                  Can take 1-3 min on the first page.
+                  {elapsed < 60
+                    ? "Takes 1-4 min depending on how many dimensions are on the page."
+                    : elapsed < 180
+                      ? "Still working — big drawings take longer. You can cancel anytime."
+                      : "Taking longer than usual. Consider cancelling and trying a different page."}
                 </p>
               </div>
+              <Button size="sm" variant="outline" onClick={cancelDetection}>
+                <X className="mr-1 h-3.5 w-3.5" />
+                Cancel
+              </Button>
             </div>
           )}
 
