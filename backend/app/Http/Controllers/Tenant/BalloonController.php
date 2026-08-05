@@ -55,9 +55,11 @@ class BalloonController extends Controller
             'source' => 'sometimes|in:manual,ocr',
         ]);
 
-        // Verify the document belongs to this plan
+        // Verify the document belongs to this plan's parent part (a
+        // drawing uploaded on the Part page has no plan_id but must
+        // still be balloonable inside every plan for that part).
         $doc = Drawing::where('id', $data['fai_document_id'])
-            ->where('plan_id', $plan->id)
+            ->where('part_id', $plan->part_id)
             ->firstOrFail();
 
         $balloon = DB::transaction(function () use ($plan, $data, $request) {
@@ -210,8 +212,11 @@ class BalloonController extends Controller
         $this->checkPermission('plans.edit');
 
         $plan = InspectionPlan::findOrFail($planId);
+        // A drawing belongs to this plan's workspace if it's either
+        // plan-scoped OR part-scoped (uploaded on the Part page — the
+        // common case). Match the InspectionPlan::documents() relation.
         $drawing = Drawing::where('id', $drawingId)
-            ->where('plan_id', $plan->id)
+            ->where('part_id', $plan->part_id)
             ->firstOrFail();
 
         $page = DrawingPage::where('drawing_id', $drawing->id)
@@ -532,7 +537,7 @@ class BalloonController extends Controller
         ]);
 
         $doc = Drawing::where('id', $data['fai_document_id'])
-            ->where('plan_id', $plan->id)
+            ->where('part_id', $plan->part_id)
             ->firstOrFail();
 
         $created = DB::transaction(function () use ($plan, $data, $doc, $request) {
