@@ -307,6 +307,36 @@ class BalloonController extends Controller
             ]);
         }
 
+        // Cheap "does this page even have real dimensions?" check.
+        // A dimensional callout almost always contains one of ± / Ø / °
+        // / R-prefix / GD&T glyph, or a decimal number with a tolerance
+        // literal ("1.500 .005"). Pages that are pure notes / parts
+        // lists / torque tables have digits everywhere but none of that
+        // shape — bail without calling the LLM instead of chewing on 40
+        // note fragments for 3 minutes.
+        $hasDimShape = false;
+        foreach ($dimensionLike as $b) {
+            $t = (string) ($b['text'] ?? '');
+            if (preg_match('/±|Ø|⌀|∅|°|⊥|⏥|⌭|⌒|⌓|∠|∥|◎|≡|↗|⇗|○|⏤|\bR\d*\.\d+|\d+\.\d+\s*[±+\-\/]/u', $t)) {
+                $hasDimShape = true;
+                break;
+            }
+        }
+        if (! $hasDimShape) {
+            return response()->json([
+                'auto_accept' => [],
+                'review' => [],
+                'message' => 'No dimensional callouts on this page (looks like notes / parts list / torque table).',
+                'stats' => [
+                    'total_ocr_blocks' => count($blocks),
+                    'merged_blocks' => count($merged),
+                    'dimension_like' => count($dimensionLike),
+                    'sent_to_ai' => 0,
+                    'skipped_reason' => 'no_dim_shape',
+                ],
+            ]);
+        }
+
         // Hard cap so Ollama on the shared CPU droplet doesn't hang the
         // request for 10+ minutes. llama3.2:3b is ~3-8s per snippet on
         // CPU; 40 keeps worst case around 3-5 min. Rank by "dimension
