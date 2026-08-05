@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Drawing;
 use App\Models\DrawingPage;
 use App\Models\Part;
+use App\Jobs\ProcessDrawing;
 use App\Services\DrawingProcessor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -91,7 +92,7 @@ class DrawingController extends Controller
             'drawing_number' => $data['drawing_number'] ?? null,
             'revision' => $data['revision'] ?? null,
             'page_count' => 0,
-            'status' => 'uploaded',
+            'status' => 'pending',
             'uploaded_by' => $request->user()->id,
         ]);
 
@@ -105,20 +106,31 @@ class DrawingController extends Controller
             ],
         ]);
 
-        try {
-            $this->processor->process($drawing);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'drawing' => $drawing->fresh(),
-                'message' => 'Drawing uploaded but page rendering failed. See processing_error.',
-                'error' => $e->getMessage(),
-            ], 207);
+        // Rasterization is CPU-heavy (pdftoppm at 150 DPI x N pages) and
+        // can run tens of seconds on large multi-page PDFs. Push it to
+        // the queue so the upload request returns immediately; frontend
+        // polls the drawing until status flips to processed/failed.
+        $tenantId = tenant()?->getTenantKey();
+        if ($tenantId) {
+            ProcessDrawing::dispatch((string) $tenantId, $drawing->id);
+        } else {
+            // No tenant context (shouldn't happen inside tenant routes) —
+            // fall back to synchronous so the upload isn't silently lost.
+            try {
+                $this->processor->process($drawing);
+            } catch (\Throwable $e) {
+                return response()->json([
+                    'drawing' => $drawing->fresh(),
+                    'message' => 'Drawing uploaded but page rendering failed. See processing_error.',
+                    'error' => $e->getMessage(),
+                ], 207);
+            }
         }
 
         return response()->json([
-            'drawing' => $drawing->fresh(['pages']),
-            'message' => 'Drawing uploaded and processed',
-        ], 201);
+            'drawing' => $drawing->fresh(),
+            'message' => 'Drawing uploaded — rendering in background',
+        ], 202);
     }
 
     public function destroy(int $id, Request $request): JsonResponse
@@ -176,13 +188,18 @@ class DrawingController extends Controller
             'page_count' => 0,
         ]);
 
-        try {
-            $this->processor->process($drawing);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'message' => 'Retry failed',
-                'error' => $e->getMessage(),
-            ], 500);
+        $tenantId = tenant()?->getTenantKey();
+        if ($tenantId) {
+            ProcessDrawing::dispatch((string) $tenantId, $drawing->id);
+        } else {
+            try {
+                $this->processor->process($drawing);
+            } catch (\Throwable $e) {
+                return response()->json([
+                    'message' => 'Retry failed',
+                    'error' => $e->getMessage(),
+                ], 500);
+            }
         }
 
         AuditLog::record('drawing.reprocessed', [
@@ -192,9 +209,9 @@ class DrawingController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Reprocessed',
+            'message' => 'Reprocessing — check status',
             'drawing' => $drawing->fresh(),
-        ]);
+        ], 202);
     }
 
     /**

@@ -38,7 +38,7 @@ interface Drawing {
   drawing_number: string | null
   revision: string | null
   page_count: number
-  status: "uploaded" | "processing" | "processed" | "failed"
+  status: "pending" | "uploaded" | "processing" | "processed" | "failed"
   file_size: number
   processing_error: string | null
   created_at: string
@@ -57,6 +57,7 @@ function formatBytes(bytes: number): string {
 const statusVariants: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   processed: "default",
   processing: "outline",
+  pending: "outline",
   uploaded: "outline",
   failed: "destructive",
 }
@@ -108,6 +109,17 @@ export default function PartDetailPage() {
     fetchPart()
   }, [fetchPart])
 
+  // Poll while any drawing is still being rendered by the queue worker.
+  // Backend flips status pending -> processing -> processed | failed.
+  useEffect(() => {
+    const hasWorkInFlight = drawings.some(
+      (d) => d.status === "pending" || d.status === "processing" || d.status === "uploaded"
+    )
+    if (!hasWorkInFlight) return
+    const t = setInterval(() => { fetchPart() }, 3000)
+    return () => clearInterval(t)
+  }, [drawings, fetchPart])
+
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0 || !part) return
 
@@ -123,11 +135,11 @@ export default function PartDetailPage() {
       formData.append("file", file)
 
       try {
-        const { data } = await api.post("/drawings", formData, {
+        await api.post("/drawings", formData, {
           headers: { "Content-Type": "multipart/form-data" },
           timeout: 180_000,
         })
-        toast.success(`${file.name} uploaded — ${data.drawing.page_count} pages`)
+        toast.success(`${file.name} uploaded — rendering in background`)
       } catch (err) {
         toast.error(getErrorMessage(err, `${file.name} failed`))
       } finally {
