@@ -86,6 +86,7 @@ export default function DrawingViewerPage() {
   const [showOcr, setShowOcr] = useState(false)
   const [ocrBlocks, setOcrBlocks] = useState<OcrBlock[]>([])
   const [ocrLoading, setOcrLoading] = useState(false)
+  const [ocrPending, setOcrPending] = useState(false)
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -132,6 +133,7 @@ export default function DrawingViewerPage() {
   useEffect(() => {
     setImageLoading(true)
     setOcrBlocks([])
+    setOcrPending(false)
   }, [currentPage])
 
   useEffect(() => {
@@ -141,11 +143,32 @@ export default function DrawingViewerPage() {
       .get(`/drawings/${drawing.id}/pages/${currentPage}/ocr`)
       .then((res) => {
         const blocks = res.data?.ocr?.blocks ?? []
+        const completed = res.data?.ocr_completed_at
         setOcrBlocks(blocks)
+        setOcrPending(!completed && blocks.length === 0)
       })
-      .catch(() => setOcrBlocks([]))
+      .catch(() => { setOcrBlocks([]); setOcrPending(false) })
       .finally(() => setOcrLoading(false))
   }, [showOcr, currentPage, drawing, ocrBlocks.length])
+
+  // Poll OCR while it's still pending for the visible page so Terry
+  // doesn't have to toggle the overlay again once Tesseract catches up.
+  useEffect(() => {
+    if (!showOcr || !ocrPending || !drawing) return
+    const t = setInterval(() => {
+      api
+        .get(`/drawings/${drawing.id}/pages/${currentPage}/ocr`)
+        .then((res) => {
+          const blocks = res.data?.ocr?.blocks ?? []
+          if (res.data?.ocr_completed_at) {
+            setOcrBlocks(blocks)
+            setOcrPending(false)
+          }
+        })
+        .catch(() => {})
+    }, 5000)
+    return () => clearInterval(t)
+  }, [showOcr, ocrPending, currentPage, drawing])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -384,6 +407,17 @@ export default function DrawingViewerPage() {
                             title={`${b.text} (${(b.confidence * 100).toFixed(0)}%)`}
                           />
                         ))}
+                      {showOcr && ocrPending && (
+                        <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
+                          <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
+                          OCR still processing this page — auto-refresh every 5s
+                        </div>
+                      )}
+                      {showOcr && !ocrPending && !ocrLoading && ocrBlocks.length === 0 && (
+                        <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
+                          OCR found no text on this page
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
