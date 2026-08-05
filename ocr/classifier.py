@@ -323,6 +323,195 @@ def _score(parsed: dict[str, Any], original_text: str, is_ref: bool) -> float:
     return max(0.0, min(1.0, score))
 
 
+# ---------- Regex fast-path ----------
+#
+# Aerospace dimension callouts follow highly regular patterns.  Roughly
+# 70-90% of what OCR extracts on a detail drawing matches one of the
+# regexes below.  Handling them here turns a ~5s Ollama call into a
+# sub-millisecond regex match, so a page with 40 dimensions is now
+# dominated by the handful of weird cases we still route to the LLM.
+
+# Trailing unit like "in", "mm", "IN", "MM" (whitespace optional).
+_UNIT_TAIL = r"\s*(in|IN|mm|MM|inch|INCH)?\s*$"
+
+# Nominal number: 1.500, .500, 0.5, 45
+_NUM = r"[-+]?\d+(?:\.\d+)?|[-+]?\.\d+"
+
+# Signed tolerance: ±0.005, +.010/-.005, +0.005/-0.000
+_TOL_SYM = re.compile(rf"±\s*({_NUM})")
+_TOL_ASYM = re.compile(rf"\+\s*({_NUM})\s*/\s*-\s*({_NUM})")
+_TOL_SINGLE_AFTER = re.compile(rf"^\s*({_NUM})\s+({_NUM})\s*(?:{_NUM})?\s*$")
+
+# Whole-callout patterns.  Each returns a classification dict when it
+# matches, or None otherwise.
+
+_RE_DIAMETER = re.compile(
+    rf"^\s*(?:Ø|⌀|∅|DIA\.?\s*)\s*({_NUM})(?:\s*±\s*({_NUM}))?" + _UNIT_TAIL,
+    re.IGNORECASE,
+)
+_RE_RADIUS = re.compile(
+    rf"^\s*R\s*({_NUM})(?:\s*±\s*({_NUM}))?" + _UNIT_TAIL,
+    re.IGNORECASE,
+)
+_RE_ANGLE = re.compile(
+    rf"^\s*({_NUM})\s*°(?:\s*±\s*({_NUM})\s*°?)?\s*$",
+)
+_RE_SURFACE = re.compile(
+    r"^\s*(\d+(?:\.\d+)?)\s*(Ra|Rz|RA|RZ)\s*(μin|uin|μm|um)?\s*$",
+)
+_RE_GDT = re.compile(
+    r"^\s*([⊕⊥⏥⌭⌒⌓∠∥◎≡↗⇗○⏤])"
+    rf"\s*({_NUM})"
+    r"(?:\s+([A-Z](?:\s*[-|]\s*[A-Z])*))?\s*$",
+)
+# Linear with symmetric ±: "1.500 ±0.005"
+_RE_LINEAR_SYM = re.compile(
+    rf"^\s*({_NUM})\s*±\s*({_NUM})" + _UNIT_TAIL,
+)
+# Linear with asymmetric: "1.500 +0.010/-0.005"
+_RE_LINEAR_ASYM = re.compile(
+    rf"^\s*({_NUM})\s*\+\s*({_NUM})\s*/\s*-\s*({_NUM})" + _UNIT_TAIL,
+)
+# Reference dim in parens: "(1.250)"
+_RE_REF = re.compile(rf"^\s*[\(\[\{{]\s*({_NUM})\s*[\)\]\}}]\s*$")
+
+
+def _infer_unit(nominal_text: str) -> str:
+    """Aerospace convention: X.XXX -> inches, XX+ -> millimeters."""
+    if "." in nominal_text:
+        return "in"
+    try:
+        v = float(nominal_text)
+    except ValueError:
+        return "in"
+    return "mm" if v >= 20 else "in"
+
+
+def _classified(**kwargs: Any) -> dict[str, Any]:
+    base = {
+        "char_type": None,
+        "nominal": None,
+        "upper_tolerance": None,
+        "lower_tolerance": None,
+        "unit": None,
+        "gdt_symbol": None,
+        "gdt_datums": [],
+        "finish_value": None,
+        "finish_unit": None,
+        "is_reference": False,
+        "confidence": 0.9,
+    }
+    base.update(kwargs)
+    return base
+
+
+def _regex_classify(text: str, is_ref: bool) -> dict[str, Any] | None:
+    """Return a classification dict for the common patterns, else None."""
+
+    m = _RE_REF.match(text)
+    if m:
+        nom = m.group(1)
+        return _classified(
+            char_type="linear",
+            nominal=float(nom),
+            upper_tolerance=0,
+            lower_tolerance=0,
+            unit=_infer_unit(nom),
+            is_reference=True,
+            confidence=0.92,
+        )
+
+    m = _RE_DIAMETER.match(text)
+    if m:
+        nom, tol = m.group(1), m.group(2)
+        return _classified(
+            char_type="diameter",
+            nominal=float(nom),
+            upper_tolerance=float(tol) if tol else None,
+            lower_tolerance=float(tol) if tol else None,
+            unit=_infer_unit(nom),
+            is_reference=is_ref,
+            confidence=0.94,
+        )
+
+    m = _RE_RADIUS.match(text)
+    if m:
+        nom, tol = m.group(1), m.group(2)
+        return _classified(
+            char_type="radius",
+            nominal=float(nom),
+            upper_tolerance=float(tol) if tol else None,
+            lower_tolerance=float(tol) if tol else None,
+            unit=_infer_unit(nom),
+            is_reference=is_ref,
+            confidence=0.94,
+        )
+
+    m = _RE_ANGLE.match(text)
+    if m:
+        nom, tol = m.group(1), m.group(2)
+        return _classified(
+            char_type="angle",
+            nominal=float(nom),
+            upper_tolerance=float(tol) if tol else None,
+            lower_tolerance=float(tol) if tol else None,
+            unit="deg",
+            is_reference=is_ref,
+            confidence=0.94,
+        )
+
+    m = _RE_SURFACE.match(text)
+    if m:
+        val, kind, unit = m.group(1), m.group(2), m.group(3) or "μin"
+        return _classified(
+            char_type="surface_finish",
+            finish_value=val,
+            finish_unit=f"{kind} {unit}".strip(),
+            confidence=0.9,
+        )
+
+    m = _RE_GDT.match(text)
+    if m:
+        sym, tol, datums = m.group(1), m.group(2), m.group(3)
+        datum_list = [d.strip() for d in re.split(r"[-|]", datums)] if datums else []
+        return _classified(
+            char_type="gdt",
+            gdt_symbol=sym,
+            upper_tolerance=float(tol),
+            lower_tolerance=float(tol),
+            gdt_datums=datum_list,
+            confidence=0.9,
+        )
+
+    m = _RE_LINEAR_ASYM.match(text)
+    if m:
+        nom, up, lo = m.group(1), m.group(2), m.group(3)
+        return _classified(
+            char_type="linear",
+            nominal=float(nom),
+            upper_tolerance=float(up),
+            lower_tolerance=float(lo),
+            unit=_infer_unit(nom),
+            is_reference=is_ref,
+            confidence=0.94,
+        )
+
+    m = _RE_LINEAR_SYM.match(text)
+    if m:
+        nom, tol = m.group(1), m.group(2)
+        return _classified(
+            char_type="linear",
+            nominal=float(nom),
+            upper_tolerance=float(tol),
+            lower_tolerance=float(tol),
+            unit=_infer_unit(nom),
+            is_reference=is_ref,
+            confidence=0.94,
+        )
+
+    return None
+
+
 def classify(text: str) -> dict[str, Any]:
     if not text or not text.strip():
         return _fallback_skip(text, "empty")
@@ -332,6 +521,14 @@ def classify(text: str) -> dict[str, Any]:
     # Hard pre-filter — never send obvious junk to LLM
     if should_skip(text):
         return _fallback_skip(text, "filtered")
+
+    # Fast-path: try regex classifier first for common patterns. If it
+    # matches with high confidence, skip Ollama entirely — turns a
+    # ~5s per-snippet LLM call into a <1 ms regex match.
+    fast = _regex_classify(text.strip(), is_ref)
+    if fast is not None:
+        fast["_source"] = "regex"
+        return fast
 
     try:
         payload = {
