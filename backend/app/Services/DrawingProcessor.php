@@ -71,6 +71,11 @@ class DrawingProcessor
     {
         $pageCount = $this->getPdfPageCount($pdfPath);
 
+        // Publish total up-front so the frontend can display "X of N
+        // pages rendered" while the loop runs. Final page_count is
+        // rewritten in the parent process() method on success.
+        $drawing->update(['page_count' => $pageCount]);
+
         for ($page = 1; $page <= $pageCount; $page++) {
             $pageBase = sprintf('%s/page-%03d', $absDir, $page);
             $imagePath = "{$pageBase}.png";

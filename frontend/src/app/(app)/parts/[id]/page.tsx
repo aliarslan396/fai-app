@@ -38,6 +38,7 @@ interface Drawing {
   drawing_number: string | null
   revision: string | null
   page_count: number
+  pages_rendered?: number
   status: "pending" | "uploaded" | "processing" | "processed" | "failed"
   file_size: number
   processing_error: string | null
@@ -447,7 +448,21 @@ function DrawingCard({
         ) : (
           <div className="flex flex-col items-center gap-2 p-4 text-muted-foreground">
             <Loader2 className="h-8 w-8 animate-spin" />
-            <span className="text-xs">Processing...</span>
+            {drawing.page_count > 0 && drawing.pages_rendered !== undefined ? (
+              <>
+                <span className="text-xs font-medium">
+                  Rendering page {drawing.pages_rendered} of {drawing.page_count}
+                </span>
+                <div className="mt-1 h-1.5 w-32 overflow-hidden rounded-full bg-muted-foreground/20">
+                  <div
+                    className="h-full bg-blue-600 transition-all"
+                    style={{ width: `${Math.min(100, Math.round((drawing.pages_rendered / drawing.page_count) * 100))}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <span className="text-xs">Rendering...</span>
+            )}
           </div>
         )}
       </Link>

@@ -34,6 +34,21 @@ class Drawing extends Model
         'processed_at' => 'datetime',
     ];
 
+    protected $appends = ['pages_rendered'];
+
+    /**
+     * Live count of DrawingPage rows so the UI can show progress
+     * while a large PDF is still rendering (page_count only gets
+     * set to the final total after processing finishes).
+     */
+    public function getPagesRenderedAttribute(): int
+    {
+        if (array_key_exists('pages_count', $this->attributes)) {
+            return (int) $this->attributes['pages_count'];
+        }
+        return $this->pages()->count();
+    }
+
     public function part()
     {
         return $this->belongsTo(Part::class);
