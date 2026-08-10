@@ -242,6 +242,7 @@ Route::prefix('api/v1')
                 Route::get('/', [NcrController::class, 'index']);
                 Route::post('/', [NcrController::class, 'store']);
                 Route::get('{id}', [NcrController::class, 'show']);
+                Route::patch('{id}', [NcrController::class, 'update']);
                 Route::post('{id}/disposition', [NcrController::class, 'disposition']);
                 Route::post('{id}/close', [NcrController::class, 'close']);
             });

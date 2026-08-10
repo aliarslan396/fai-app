@@ -39,7 +39,7 @@ class NcrController extends Controller
         $this->checkPermission('ncr.view');
 
         $query = Ncr::query()
-            ->with(['part:id,part_number,description', 'creator:id,name', 'dispositioner:id,name'])
+            ->with(['part:id,part_number,description', 'creator:id,name', 'detector:id,name', 'dispositioner:id,name'])
             ->orderByDesc('created_at');
 
         if ($status = $request->query('status')) {
@@ -54,6 +54,12 @@ class NcrController extends Controller
         if ($sessionId = $request->query('inspection_session_id')) {
             $query->where('inspection_session_id', $sessionId);
         }
+        if ($defectCode = $request->query('defect_code')) {
+            $query->where('defect_code', $defectCode);
+        }
+        if ($detectionPoint = $request->query('detection_point')) {
+            $query->where('detection_point', $detectionPoint);
+        }
 
         return response()->json(['ncrs' => $query->paginate(50)]);
     }
@@ -66,6 +72,7 @@ class NcrController extends Controller
             'part:id,part_number,description',
             'inspectionSession:id',
             'creator:id,name,email',
+            'detector:id,name,email',
             'dispositioner:id,name,email',
             'closer:id,name,email',
             'source',
@@ -81,6 +88,9 @@ class NcrController extends Controller
         $data = $request->validate([
             'part_id' => 'nullable|integer|exists:parts,id',
             'inspection_session_id' => 'nullable|integer|exists:inspection_sessions,id',
+            'lot_serial' => 'nullable|string|max:100',
+            'quantity_affected' => 'nullable|integer|min:0',
+            'defect_code' => 'nullable|string|max:50',
             'source_type' => 'nullable|string|in:FaiForm3Row,CustomReportCharacteristic',
             'source_id' => 'nullable|integer|min:1',
             'characteristic_ref' => 'nullable|string|max:60',
@@ -89,15 +99,24 @@ class NcrController extends Controller
             'unit' => 'nullable|string|max:20',
             'severity' => 'required|in:' . implode(',', Ncr::SEVERITIES),
             'cause' => 'nullable|string',
+            'material_cost' => 'nullable|numeric|min:0|max:99999999.99',
+            'labor_hours' => 'nullable|numeric|min:0|max:9999.99',
+            'scrap_value' => 'nullable|numeric|min:0|max:99999999.99',
+            'detected_by' => 'nullable|integer|exists:users,id',
+            'detection_point' => 'nullable|in:' . implode(',', Ncr::DETECTION_POINTS),
         ]);
 
         try {
             if (! empty($data['source_type']) && ! empty($data['source_id'])) {
                 $row = $this->findSourceRow($data['source_type'], $data['source_id']);
-                $ncr = $this->service->createFromRow($request->user(), $row, [
-                    'severity' => $data['severity'],
-                    'cause' => $data['cause'] ?? null,
-                ]);
+                // Forward the enhanced fields alongside the snapshot from the
+                // failing row so the inspector doesn't have to re-enter them.
+                $overrides = array_intersect_key($data, array_flip([
+                    'severity', 'cause', 'lot_serial', 'quantity_affected',
+                    'defect_code', 'material_cost', 'labor_hours', 'scrap_value',
+                    'detected_by', 'detection_point',
+                ]));
+                $ncr = $this->service->createFromRow($request->user(), $row, $overrides);
             } else {
                 // Normalize source_type to FQCN if present
                 if (! empty($data['source_type'])) {
@@ -132,6 +151,45 @@ class NcrController extends Controller
         }
 
         return response()->json(['ncr' => $ncr->fresh(['creator:id,name', 'dispositioner:id,name'])]);
+    }
+
+    /**
+     * Update the enhanced/editable fields on an OPEN NCR. Locked after
+     * disposition so the disposition-time snapshot stays truthful for
+     * auditors.
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $this->checkPermission('ncr.edit');
+
+        $data = $request->validate([
+            'lot_serial' => 'nullable|string|max:100',
+            'quantity_affected' => 'nullable|integer|min:0',
+            'defect_code' => 'nullable|string|max:50',
+            'characteristic_ref' => 'nullable|string|max:60',
+            'requirement' => 'nullable|string',
+            'actual_result' => 'nullable|string|max:60',
+            'unit' => 'nullable|string|max:20',
+            'severity' => 'sometimes|in:' . implode(',', Ncr::SEVERITIES),
+            'cause' => 'nullable|string',
+            'material_cost' => 'nullable|numeric|min:0|max:99999999.99',
+            'labor_hours' => 'nullable|numeric|min:0|max:9999.99',
+            'scrap_value' => 'nullable|numeric|min:0|max:99999999.99',
+            'detected_by' => 'nullable|integer|exists:users,id',
+            'detection_point' => 'nullable|in:' . implode(',', Ncr::DETECTION_POINTS),
+        ]);
+
+        $ncr = Ncr::findOrFail($id);
+
+        try {
+            $ncr = $this->service->update($request->user(), $ncr, $data);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        }
+
+        return response()->json(['ncr' => $ncr->fresh(['creator:id,name', 'detector:id,name'])]);
     }
 
     public function close(Request $request, int $id): JsonResponse

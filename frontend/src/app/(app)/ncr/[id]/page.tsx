@@ -20,6 +20,7 @@ import { DispositionDialog } from "@/components/ncr/disposition-dialog"
 import { CloseNcrDialog } from "@/components/ncr/close-dialog"
 import { useAuthStore } from "@/lib/auth-store"
 import {
+  DETECTION_POINT_LABEL,
   DISPOSITION_LABEL,
   SEVERITY_COLOR,
   SEVERITY_LABEL,
@@ -148,6 +149,81 @@ export default function NcrDetailPage() {
             <FieldRow label="Actual Result">
               <span className="font-mono text-sm">{ncr.actual_result ?? "—"} {ncr.unit ?? ""}</span>
             </FieldRow>
+
+            {(ncr.lot_serial || ncr.quantity_affected != null || ncr.defect_code) && (
+              <>
+                <Separator />
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Traceability
+                </div>
+                {ncr.lot_serial && (
+                  <FieldRow label="Lot / Serial">
+                    <span className="font-mono text-sm">{ncr.lot_serial}</span>
+                  </FieldRow>
+                )}
+                {ncr.quantity_affected != null && (
+                  <FieldRow label="Qty Affected">
+                    <span>{ncr.quantity_affected}</span>
+                  </FieldRow>
+                )}
+                {ncr.defect_code && (
+                  <FieldRow label="Defect Code">
+                    <span className="font-mono text-sm">{ncr.defect_code}</span>
+                  </FieldRow>
+                )}
+              </>
+            )}
+
+            {(ncr.detection_point || ncr.detector) && (
+              <>
+                <Separator />
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Detection
+                </div>
+                {ncr.detection_point && (
+                  <FieldRow label="Detection Point">
+                    <span>{DETECTION_POINT_LABEL[ncr.detection_point]}</span>
+                  </FieldRow>
+                )}
+                {ncr.detector && (
+                  <FieldRow label="Detected By">
+                    <span>{ncr.detector.name}</span>
+                  </FieldRow>
+                )}
+              </>
+            )}
+
+            {(ncr.material_cost != null || ncr.labor_hours != null || ncr.scrap_value != null) && (
+              <>
+                <Separator />
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Cost of Quality
+                </div>
+                {ncr.material_cost != null && (
+                  <FieldRow label="Material">
+                    <span>${Number(ncr.material_cost).toFixed(2)}</span>
+                  </FieldRow>
+                )}
+                {ncr.labor_hours != null && (
+                  <FieldRow label="Labor">
+                    <span>{Number(ncr.labor_hours).toFixed(2)} hrs</span>
+                  </FieldRow>
+                )}
+                {ncr.scrap_value != null && (
+                  <FieldRow label="Scrap Value">
+                    <span>${Number(ncr.scrap_value).toFixed(2)}</span>
+                  </FieldRow>
+                )}
+                {ncr.cost_of_quality != null && ncr.cost_of_quality > 0 && (
+                  <FieldRow label="Total Impact">
+                    <span className="font-semibold text-amber-700">
+                      ${ncr.cost_of_quality.toFixed(2)}
+                    </span>
+                  </FieldRow>
+                )}
+              </>
+            )}
+
             {ncr.cause && (
               <>
                 <Separator />

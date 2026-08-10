@@ -29,12 +29,18 @@ class NcrService
     public function create(TenantUser $creator, array $attributes): Ncr
     {
         $this->validateSeverity($attributes['severity'] ?? Ncr::SEVERITY_MAJOR);
+        if (! empty($attributes['detection_point'])) {
+            $this->validateDetectionPoint($attributes['detection_point']);
+        }
 
         return DB::transaction(function () use ($creator, $attributes) {
             $ncr = Ncr::create([
                 'ncr_number' => $this->nextNcrNumber(),
                 'part_id' => $attributes['part_id'] ?? null,
                 'inspection_session_id' => $attributes['inspection_session_id'] ?? null,
+                'lot_serial' => $attributes['lot_serial'] ?? null,
+                'quantity_affected' => $attributes['quantity_affected'] ?? null,
+                'defect_code' => $attributes['defect_code'] ?? null,
                 'source_type' => $attributes['source_type'] ?? null,
                 'source_id' => $attributes['source_id'] ?? null,
                 'characteristic_ref' => $attributes['characteristic_ref'] ?? null,
@@ -45,7 +51,12 @@ class NcrService
                 'cause' => $attributes['cause'] ?? null,
                 'disposition' => Ncr::DISPOSITION_PENDING,
                 'status' => Ncr::STATUS_OPEN,
+                'material_cost' => $attributes['material_cost'] ?? null,
+                'labor_hours' => $attributes['labor_hours'] ?? null,
+                'scrap_value' => $attributes['scrap_value'] ?? null,
                 'created_by' => $creator->id,
+                'detected_by' => $attributes['detected_by'] ?? $creator->id,
+                'detection_point' => $attributes['detection_point'] ?? null,
             ]);
 
             AuditLog::record('ncr.created', [
@@ -55,11 +66,58 @@ class NcrService
                     'ncr_number' => $ncr->ncr_number,
                     'part_id' => $ncr->part_id,
                     'severity' => $ncr->severity,
+                    'defect_code' => $ncr->defect_code,
+                    'detection_point' => $ncr->detection_point,
                     'user_id' => $creator->id,
                 ],
             ]);
 
             return $ncr;
+        });
+    }
+
+    /**
+     * Update the editable fields on an open NCR. Blocked once dispositioned
+     * so history stays immutable (disposition-time snapshot). Any change
+     * is audit-logged with a diff.
+     */
+    public function update(TenantUser $user, Ncr $ncr, array $attributes): Ncr
+    {
+        if (! $ncr->isOpen()) {
+            throw new RuntimeException("NCR {$ncr->ncr_number} is not open — cannot edit after disposition");
+        }
+        if (! empty($attributes['detection_point'])) {
+            $this->validateDetectionPoint($attributes['detection_point']);
+        }
+        if (! empty($attributes['severity'])) {
+            $this->validateSeverity($attributes['severity']);
+        }
+
+        $editable = [
+            'lot_serial', 'quantity_affected', 'defect_code',
+            'characteristic_ref', 'requirement', 'actual_result', 'unit',
+            'severity', 'cause',
+            'material_cost', 'labor_hours', 'scrap_value',
+            'detected_by', 'detection_point',
+        ];
+
+        return DB::transaction(function () use ($user, $ncr, $attributes, $editable) {
+            $before = $ncr->only($editable);
+            $updates = array_intersect_key($attributes, array_flip($editable));
+            $ncr->update($updates);
+
+            AuditLog::record('ncr.updated', [
+                'subject_type' => Ncr::class,
+                'subject_id' => $ncr->id,
+                'meta' => [
+                    'ncr_number' => $ncr->ncr_number,
+                    'before' => $before,
+                    'after' => $ncr->only($editable),
+                    'user_id' => $user->id,
+                ],
+            ]);
+
+            return $ncr->fresh();
         });
     }
 
@@ -186,6 +244,13 @@ class NcrService
     {
         if (! in_array($disposition, Ncr::DISPOSITIONS, true)) {
             throw new InvalidArgumentException("Invalid disposition: {$disposition}");
+        }
+    }
+
+    private function validateDetectionPoint(string $point): void
+    {
+        if (! in_array($point, Ncr::DETECTION_POINTS, true)) {
+            throw new InvalidArgumentException("Invalid detection_point: {$point}");
         }
     }
 

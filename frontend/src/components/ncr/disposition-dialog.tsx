@@ -39,7 +39,7 @@ const CHOOSABLE: NcrDisposition[] = [
   "scrap",
   "use_as_is",
   "return_to_vendor",
-  "no_defect_found",
+  "mrb",
 ]
 
 export function DispositionDialog({ open, onOpenChange, ncr, onDone }: Props) {

@@ -25,7 +25,13 @@ import {
 } from "@/components/ui/select"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
-import { SEVERITY_LABEL, type Ncr, type NcrSeverity } from "@/lib/ncrs"
+import {
+  SEVERITY_LABEL,
+  DETECTION_POINT_LABEL,
+  type Ncr,
+  type NcrSeverity,
+  type NcrDetectionPoint,
+} from "@/lib/ncrs"
 
 interface Props {
   open: boolean
@@ -55,6 +61,13 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
   const [requirement, setRequirement] = useState(prefill?.requirement ?? "")
   const [actualResult, setActualResult] = useState(prefill?.actual_result ?? "")
   const [unit, setUnit] = useState(prefill?.unit ?? "")
+  const [lotSerial, setLotSerial] = useState("")
+  const [qtyAffected, setQtyAffected] = useState("")
+  const [defectCode, setDefectCode] = useState("")
+  const [detectionPoint, setDetectionPoint] = useState<NcrDetectionPoint | "">("")
+  const [materialCost, setMaterialCost] = useState("")
+  const [laborHours, setLaborHours] = useState("")
+  const [scrapValue, setScrapValue] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
   const reset = () => {
@@ -64,6 +77,13 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
     setRequirement(prefill?.requirement ?? "")
     setActualResult(prefill?.actual_result ?? "")
     setUnit(prefill?.unit ?? "")
+    setLotSerial("")
+    setQtyAffected("")
+    setDefectCode("")
+    setDetectionPoint("")
+    setMaterialCost("")
+    setLaborHours("")
+    setScrapValue("")
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,6 +97,13 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
         requirement: requirement || null,
         actual_result: actualResult || null,
         unit: unit || null,
+        lot_serial: lotSerial || null,
+        quantity_affected: qtyAffected ? Number(qtyAffected) : null,
+        defect_code: defectCode || null,
+        detection_point: detectionPoint || null,
+        material_cost: materialCost ? Number(materialCost) : null,
+        labor_hours: laborHours ? Number(laborHours) : null,
+        scrap_value: scrapValue ? Number(scrapValue) : null,
       }
       if (prefill?.source_type) payload.source_type = prefill.source_type
       if (prefill?.source_id) payload.source_id = prefill.source_id
@@ -106,7 +133,7 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
         onOpenChange(next)
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
@@ -200,6 +227,123 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
               placeholder="What went wrong? Root cause if known."
               disabled={submitting}
             />
+          </div>
+
+          {/* Detection metadata (doc 3.10) */}
+          <div className="rounded-md border bg-muted/30 p-3 space-y-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Detection
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="ncr-detection-point">Detection Point</Label>
+                <Select
+                  value={detectionPoint}
+                  onValueChange={(v) => setDetectionPoint(v as NcrDetectionPoint)}
+                  disabled={submitting}
+                >
+                  <SelectTrigger id="ncr-detection-point" className="w-full">
+                    <SelectValue placeholder="Where caught?" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(DETECTION_POINT_LABEL) as NcrDetectionPoint[]).map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {DETECTION_POINT_LABEL[d]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ncr-defect-code">Defect Code</Label>
+                <Input
+                  id="ncr-defect-code"
+                  value={defectCode}
+                  onChange={(e) => setDefectCode(e.target.value)}
+                  placeholder="HOLE_OVERSIZE"
+                  disabled={submitting}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Affected quantity + traceability (doc 3.10) */}
+          <div className="rounded-md border bg-muted/30 p-3 space-y-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Traceability
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="ncr-lot-serial">Lot / Serial #</Label>
+                <Input
+                  id="ncr-lot-serial"
+                  value={lotSerial}
+                  onChange={(e) => setLotSerial(e.target.value)}
+                  placeholder="S/N 042 or LOT-2026-0087"
+                  disabled={submitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ncr-qty">Quantity Affected</Label>
+                <Input
+                  id="ncr-qty"
+                  type="number"
+                  min="0"
+                  value={qtyAffected}
+                  onChange={(e) => setQtyAffected(e.target.value)}
+                  placeholder="1"
+                  disabled={submitting}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Cost of quality (doc 3.10) */}
+          <div className="rounded-md border bg-muted/30 p-3 space-y-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Cost of Quality (optional)
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="ncr-mat-cost">Material $</Label>
+                <Input
+                  id="ncr-mat-cost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={materialCost}
+                  onChange={(e) => setMaterialCost(e.target.value)}
+                  placeholder="0.00"
+                  disabled={submitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ncr-labor-hrs">Labor Hrs</Label>
+                <Input
+                  id="ncr-labor-hrs"
+                  type="number"
+                  step="0.25"
+                  min="0"
+                  value={laborHours}
+                  onChange={(e) => setLaborHours(e.target.value)}
+                  placeholder="0.0"
+                  disabled={submitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ncr-scrap-val">Scrap Value $</Label>
+                <Input
+                  id="ncr-scrap-val"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={scrapValue}
+                  onChange={(e) => setScrapValue(e.target.value)}
+                  placeholder="0.00"
+                  disabled={submitting}
+                />
+              </div>
+            </div>
           </div>
 
           <DialogFooter>

@@ -9,9 +9,11 @@ export type NcrDisposition =
   | "scrap"
   | "use_as_is"
   | "return_to_vendor"
-  | "no_defect_found"
+  | "mrb"
 
 export type NcrStatus = "open" | "dispositioned" | "closed"
+
+export type NcrDetectionPoint = "incoming" | "in_process" | "final" | "customer"
 
 export interface NcrUserRef {
   id: number
@@ -30,6 +32,9 @@ export interface Ncr {
   ncr_number: string
   part_id: number | null
   inspection_session_id: number | null
+  lot_serial: string | null
+  quantity_affected: number | null
+  defect_code: string | null
   source_type: string | null
   source_id: number | null
   characteristic_ref: string | null
@@ -42,7 +47,14 @@ export interface Ncr {
   disposition_notes: string | null
   status: NcrStatus
   closure_notes: string | null
+  material_cost: string | number | null
+  labor_hours: string | number | null
+  scrap_value: string | number | null
+  cost_of_quality: number | null
+  capa_id: number | null
   created_by: number
+  detected_by: number | null
+  detection_point: NcrDetectionPoint | null
   dispositioned_by: number | null
   dispositioned_at: string | null
   closed_by: number | null
@@ -51,6 +63,7 @@ export interface Ncr {
   updated_at: string
   part?: NcrPartRef | null
   creator?: NcrUserRef | null
+  detector?: NcrUserRef | null
   dispositioner?: NcrUserRef | null
   closer?: NcrUserRef | null
 }
@@ -83,7 +96,21 @@ export const DISPOSITION_LABEL: Record<NcrDisposition, string> = {
   scrap: "Scrap",
   use_as_is: "Use As-Is",
   return_to_vendor: "Return to Vendor",
-  no_defect_found: "No Defect Found",
+  mrb: "MRB — Material Review Board",
+}
+
+export const DETECTION_POINT_LABEL: Record<NcrDetectionPoint, string> = {
+  incoming: "Incoming Inspection",
+  in_process: "In-Process",
+  final: "Final Inspection",
+  customer: "Customer (Escape)",
+}
+
+export const DETECTION_POINT_COLOR: Record<NcrDetectionPoint, string> = {
+  incoming: "bg-blue-100 text-blue-800 border-blue-300",
+  in_process: "bg-slate-100 text-slate-700 border-slate-300",
+  final: "bg-amber-100 text-amber-800 border-amber-300",
+  customer: "bg-red-100 text-red-800 border-red-300",
 }
 
 export const STATUS_LABEL: Record<NcrStatus, string> = {
@@ -103,6 +130,8 @@ interface UseNcrsOptions {
   disposition?: NcrDisposition | ""
   partId?: number
   sessionId?: number
+  defectCode?: string
+  detectionPoint?: NcrDetectionPoint | ""
 }
 
 export function useNcrs(options: UseNcrsOptions = {}) {
@@ -120,6 +149,8 @@ export function useNcrs(options: UseNcrsOptions = {}) {
       if (options.disposition) params.disposition = options.disposition
       if (options.partId) params.part_id = options.partId
       if (options.sessionId) params.inspection_session_id = options.sessionId
+      if (options.defectCode) params.defect_code = options.defectCode
+      if (options.detectionPoint) params.detection_point = options.detectionPoint
 
       const { data } = await api.get<NcrListResponse>("/ncrs", { params })
       setNcrs(data.ncrs.data ?? [])
