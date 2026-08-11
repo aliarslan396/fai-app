@@ -244,6 +244,7 @@ Route::prefix('api/v1')
                 Route::get('{id}', [NcrController::class, 'show']);
                 Route::patch('{id}', [NcrController::class, 'update']);
                 Route::post('{id}/disposition', [NcrController::class, 'disposition']);
+                Route::post('{id}/verify', [NcrController::class, 'verify']);
                 Route::post('{id}/close', [NcrController::class, 'close']);
 
                 // Attachments (doc 3.10)

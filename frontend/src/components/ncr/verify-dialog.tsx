@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, CheckCircle2 } from "lucide-react"
+import { Loader2, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -26,23 +26,32 @@ interface Props {
   onDone?: (ncr: Ncr) => void
 }
 
-export function CloseNcrDialog({ open, onOpenChange, ncr, onDone }: Props) {
+/**
+ * First half of the two-sign-off close-out per doc 3.10.
+ * Records that corrective action was performed. A DIFFERENT user
+ * must then close the NCR (enforced server-side).
+ */
+export function VerifyNcrDialog({ open, onOpenChange, ncr, onDone }: Props) {
   const [notes, setNotes] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (notes.trim().length < 3) {
+      toast.error("Verification notes required (min 3 chars).")
+      return
+    }
     setSubmitting(true)
     try {
-      const { data } = await api.post<{ ncr: Ncr }>(`/ncrs/${ncr.id}/close`, {
-        closure_notes: notes || null,
+      const { data } = await api.post<{ ncr: Ncr }>(`/ncrs/${ncr.id}/verify`, {
+        notes: notes.trim(),
       })
-      toast.success(`${ncr.ncr_number} closed`)
+      toast.success(`${ncr.ncr_number} verified — awaiting QA closure`)
       onDone?.(data.ncr)
       setNotes("")
       onOpenChange(false)
     } catch (err) {
-      toast.error(getErrorMessage(err, "Failed to close"))
+      toast.error(getErrorMessage(err, "Failed to verify"))
     } finally {
       setSubmitting(false)
     }
@@ -59,35 +68,33 @@ export function CloseNcrDialog({ open, onOpenChange, ncr, onDone }: Props) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            Close {ncr.ncr_number}
+            <ShieldCheck className="h-4 w-4 text-blue-600" />
+            Verify {ncr.ncr_number}
           </DialogTitle>
           <DialogDescription>
-            Second sign-off — closes the NCR after verification. Must be a different user
-            than the one who verified. NCR cannot be reopened after closure.
+            First sign-off — confirm the disposition action was carried out. A different
+            user must then close the NCR (aerospace two-signature rule).
           </DialogDescription>
         </DialogHeader>
 
-        {ncr.verified_by && (
-          <div className="rounded-md border border-blue-200 bg-blue-50/60 p-3 text-xs">
-            <div className="font-medium text-blue-800">Verified by {ncr.verifier?.name ?? "—"}</div>
-            {ncr.verification_notes && (
-              <div className="mt-1 whitespace-pre-wrap text-blue-700">{ncr.verification_notes}</div>
-            )}
-          </div>
-        )}
-
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="close-notes">Closure notes (optional)</Label>
+            <Label htmlFor="verify-notes">
+              Verification notes <span className="text-destructive">*</span>
+            </Label>
             <Textarea
-              id="close-notes"
+              id="verify-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
-              placeholder="Final QA confirmation, disposition validation, references, etc."
+              placeholder="Corrective action performed, parts reworked/scrapped, evidence attached, etc."
               disabled={submitting}
+              required
+              minLength={3}
             />
+            <p className="text-xs text-muted-foreground">
+              Your name + timestamp will be recorded on the NCR.
+            </p>
           </div>
 
           <DialogFooter>
@@ -96,7 +103,7 @@ export function CloseNcrDialog({ open, onOpenChange, ncr, onDone }: Props) {
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-              Close NCR
+              Verify Action
             </Button>
           </DialogFooter>
         </form>

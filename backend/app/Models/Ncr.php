@@ -103,12 +103,16 @@ class Ncr extends Model
         'detection_point',
         'dispositioned_by',
         'dispositioned_at',
+        'verified_by',
+        'verified_at',
+        'verification_notes',
         'closed_by',
         'closed_at',
     ];
 
     protected $casts = [
         'dispositioned_at' => 'datetime',
+        'verified_at' => 'datetime',
         'closed_at' => 'datetime',
         'quantity_affected' => 'integer',
         'material_cost' => 'decimal:2',
@@ -161,6 +165,11 @@ class Ncr extends Model
         return $this->belongsTo(TenantUser::class, 'dispositioned_by');
     }
 
+    public function verifier(): BelongsTo
+    {
+        return $this->belongsTo(TenantUser::class, 'verified_by');
+    }
+
     public function closer(): BelongsTo
     {
         return $this->belongsTo(TenantUser::class, 'closed_by');
@@ -184,5 +193,10 @@ class Ncr extends Model
     public function isClosed(): bool
     {
         return $this->status === self::STATUS_CLOSED;
+    }
+
+    public function isVerified(): bool
+    {
+        return $this->verified_at !== null;
     }
 }

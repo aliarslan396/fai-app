@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   CheckCircle2,
   Info,
+  ShieldCheck,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -18,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { DispositionDialog } from "@/components/ncr/disposition-dialog"
 import { CloseNcrDialog } from "@/components/ncr/close-dialog"
+import { VerifyNcrDialog } from "@/components/ncr/verify-dialog"
 import { NcrAttachmentsPanel } from "@/components/ncr/attachments-panel"
 import { useAuthStore } from "@/lib/auth-store"
 import {
@@ -49,15 +51,17 @@ function fmtDateTime(iso: string | null) {
 export default function NcrDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
-  const { hasPermission } = useAuthStore()
+  const { user, hasPermission } = useAuthStore()
   const canDisposition = hasPermission("ncr.disposition")
   const canClose = hasPermission("ncr.close")
   const canEdit = hasPermission("ncr.edit")
+  const currentUserId = user?.id ?? null
 
   const id = Number(params.id)
   const { ncr, loading, error, refetch } = useNcr(Number.isFinite(id) ? id : null)
 
   const [dispOpen, setDispOpen] = useState(false)
+  const [verifyOpen, setVerifyOpen] = useState(false)
   const [closeOpen, setCloseOpen] = useState(false)
 
   if (loading) {
@@ -113,8 +117,22 @@ export default function NcrDetailPage() {
               Disposition
             </Button>
           )}
-          {ncr.status === "dispositioned" && canClose && (
-            <Button onClick={() => setCloseOpen(true)}>
+          {ncr.status === "dispositioned" && !ncr.verified_at && canClose && (
+            <Button onClick={() => setVerifyOpen(true)}>
+              <ShieldCheck className="mr-1 h-4 w-4" />
+              Verify Action
+            </Button>
+          )}
+          {ncr.status === "dispositioned" && ncr.verified_at && canClose && (
+            <Button
+              onClick={() => setCloseOpen(true)}
+              disabled={ncr.verified_by === currentUserId}
+              title={
+                ncr.verified_by === currentUserId
+                  ? "Two-signature rule: a different user must close (you verified this NCR)."
+                  : "Second sign-off — close the NCR"
+              }
+            >
               <CheckCircle2 className="mr-1 h-4 w-4" />
               Close NCR
             </Button>
@@ -305,8 +323,19 @@ export default function NcrDetailPage() {
               }
             />
             <TimelineStep
+              done={!!ncr.verified_at}
+              label="Verified (Sign-off 1)"
+              detail={
+                ncr.verified_at
+                  ? `${ncr.verifier?.name ?? "?"} · ${fmtDateTime(ncr.verified_at)}`
+                  : ncr.status === "dispositioned"
+                    ? "Awaiting verification of corrective action"
+                    : "—"
+              }
+            />
+            <TimelineStep
               done={ncr.status === "closed"}
-              label="Closed"
+              label="Closed (Sign-off 2)"
               detail={
                 ncr.closed_at
                   ? `${ncr.closer?.name ?? "?"} · ${fmtDateTime(ncr.closed_at)}`
@@ -346,6 +375,12 @@ export default function NcrDetailPage() {
       <DispositionDialog
         open={dispOpen}
         onOpenChange={setDispOpen}
+        ncr={ncr}
+        onDone={() => void refetch()}
+      />
+      <VerifyNcrDialog
+        open={verifyOpen}
+        onOpenChange={setVerifyOpen}
         ncr={ncr}
         onDone={() => void refetch()}
       />

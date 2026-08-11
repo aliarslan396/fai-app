@@ -45,7 +45,13 @@ class NcrController extends Controller
         $this->checkPermission('ncr.view');
 
         $query = Ncr::query()
-            ->with(['part:id,part_number,description', 'creator:id,name', 'detector:id,name', 'dispositioner:id,name'])
+            ->with([
+                'part:id,part_number,description',
+                'creator:id,name',
+                'detector:id,name',
+                'dispositioner:id,name',
+                'verifier:id,name',
+            ])
             ->orderByDesc('created_at');
 
         if ($status = $request->query('status')) {
@@ -80,6 +86,7 @@ class NcrController extends Controller
             'creator:id,name,email',
             'detector:id,name,email',
             'dispositioner:id,name,email',
+            'verifier:id,name,email',
             'closer:id,name,email',
             'source',
             'attachments.uploader:id,name',
@@ -197,6 +204,29 @@ class NcrController extends Controller
         }
 
         return response()->json(['ncr' => $ncr->fresh(['creator:id,name', 'detector:id,name'])]);
+    }
+
+    /**
+     * First half of the two-sign-off close-out per doc 3.10 —
+     * confirms corrective action performed. Different user must close.
+     */
+    public function verify(Request $request, int $id): JsonResponse
+    {
+        $this->checkPermission('ncr.close');
+
+        $data = $request->validate([
+            'notes' => 'required|string|min:3|max:2000',
+        ]);
+
+        $ncr = Ncr::findOrFail($id);
+
+        try {
+            $ncr = $this->service->verify($request->user(), $ncr, $data['notes']);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['ncr' => $ncr->fresh(['creator:id,name', 'dispositioner:id,name', 'verifier:id,name'])]);
     }
 
     public function close(Request $request, int $id): JsonResponse

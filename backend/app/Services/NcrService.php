@@ -175,13 +175,56 @@ class NcrService
     }
 
     /**
-     * Close an NCR after corrective action verified. Transitions
+     * Verify corrective action was performed. First half of the two-
+     * sign-off close-out per doc 3.10. NCR must be dispositioned. The
+     * verifier records their name + notes; then a DIFFERENT user must
+     * close the NCR (see close()).
+     */
+    public function verify(TenantUser $user, Ncr $ncr, ?string $notes = null): Ncr
+    {
+        if (! $ncr->isDispositioned()) {
+            throw new RuntimeException("NCR {$ncr->ncr_number} cannot be verified from status: {$ncr->status}");
+        }
+        if ($ncr->isVerified()) {
+            throw new RuntimeException("NCR {$ncr->ncr_number} is already verified by {$ncr->verifier?->name}");
+        }
+
+        return DB::transaction(function () use ($user, $ncr, $notes) {
+            $ncr->update([
+                'verified_by' => $user->id,
+                'verified_at' => now(),
+                'verification_notes' => $notes,
+            ]);
+
+            AuditLog::record('ncr.verified', [
+                'subject_type' => Ncr::class,
+                'subject_id' => $ncr->id,
+                'meta' => [
+                    'ncr_number' => $ncr->ncr_number,
+                    'user_id' => $user->id,
+                ],
+            ]);
+
+            return $ncr->fresh();
+        });
+    }
+
+    /**
+     * Close an NCR — the SECOND half of two-sign-off. Blocked unless
+     * verify() ran first, and blocked if the closer is the same person
+     * who verified (anti-fraud, per doc 3.10). Transitions
      * dispositioned → closed.
      */
     public function close(TenantUser $user, Ncr $ncr, ?string $closureNotes = null): Ncr
     {
         if (! $ncr->isDispositioned()) {
             throw new RuntimeException("NCR {$ncr->ncr_number} cannot be closed from status: {$ncr->status}");
+        }
+        if (! $ncr->isVerified()) {
+            throw new RuntimeException("NCR {$ncr->ncr_number} must be verified before closure — click 'Verify Action' first.");
+        }
+        if ((int) $ncr->verified_by === (int) $user->id) {
+            throw new RuntimeException("Same user cannot verify and close the NCR (two-signature rule). A different user must close.");
         }
 
         return DB::transaction(function () use ($user, $ncr, $closureNotes) {
@@ -197,6 +240,8 @@ class NcrService
                 'subject_id' => $ncr->id,
                 'meta' => [
                     'ncr_number' => $ncr->ncr_number,
+                    'verified_by' => $ncr->verified_by,
+                    'closed_by' => $user->id,
                     'user_id' => $user->id,
                 ],
             ]);

@@ -71,6 +71,9 @@ export interface Ncr {
   detection_point: NcrDetectionPoint | null
   dispositioned_by: number | null
   dispositioned_at: string | null
+  verified_by: number | null
+  verified_at: string | null
+  verification_notes: string | null
   closed_by: number | null
   closed_at: string | null
   created_at: string
@@ -79,6 +82,7 @@ export interface Ncr {
   creator?: NcrUserRef | null
   detector?: NcrUserRef | null
   dispositioner?: NcrUserRef | null
+  verifier?: NcrUserRef | null
   closer?: NcrUserRef | null
   attachments?: NcrAttachment[]
 }
