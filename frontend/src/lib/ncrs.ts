@@ -27,6 +27,20 @@ export interface NcrPartRef {
   description: string | null
 }
 
+export interface NcrAttachment {
+  id: number
+  ncr_id: number
+  original_filename: string
+  mime_type: string
+  size_bytes: number
+  is_image: boolean
+  is_pdf: boolean
+  human_size: string
+  uploaded_by: number
+  uploader?: NcrUserRef | null
+  created_at: string
+}
+
 export interface Ncr {
   id: number
   ncr_number: string
@@ -66,6 +80,7 @@ export interface Ncr {
   detector?: NcrUserRef | null
   dispositioner?: NcrUserRef | null
   closer?: NcrUserRef | null
+  attachments?: NcrAttachment[]
 }
 
 export interface NcrListResponse {

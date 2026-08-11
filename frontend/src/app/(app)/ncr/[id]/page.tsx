@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { DispositionDialog } from "@/components/ncr/disposition-dialog"
 import { CloseNcrDialog } from "@/components/ncr/close-dialog"
+import { NcrAttachmentsPanel } from "@/components/ncr/attachments-panel"
 import { useAuthStore } from "@/lib/auth-store"
 import {
   DETECTION_POINT_LABEL,
@@ -51,6 +52,7 @@ export default function NcrDetailPage() {
   const { hasPermission } = useAuthStore()
   const canDisposition = hasPermission("ncr.disposition")
   const canClose = hasPermission("ncr.close")
+  const canEdit = hasPermission("ncr.edit")
 
   const id = Number(params.id)
   const { ncr, loading, error, refetch } = useNcr(Number.isFinite(id) ? id : null)
@@ -264,6 +266,22 @@ export default function NcrDetailPage() {
                 </div>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Attachments (doc 3.10) — full-width card between Defect Snapshot + Workflow */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Attachments</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <NcrAttachmentsPanel
+              ncrId={ncr.id}
+              attachments={ncr.attachments ?? []}
+              canEdit={canEdit}
+              isClosed={ncr.status === "closed"}
+              onChange={refetch}
+            />
           </CardContent>
         </Card>
 

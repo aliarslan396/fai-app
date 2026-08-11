@@ -166,6 +166,11 @@ class Ncr extends Model
         return $this->belongsTo(TenantUser::class, 'closed_by');
     }
 
+    public function attachments()
+    {
+        return $this->hasMany(NcrAttachment::class)->orderByDesc('created_at');
+    }
+
     public function isOpen(): bool
     {
         return $this->status === self::STATUS_OPEN;

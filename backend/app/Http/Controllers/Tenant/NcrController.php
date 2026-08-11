@@ -3,15 +3,21 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\CustomReportCharacteristic;
 use App\Models\FaiForm3Row;
 use App\Models\Ncr;
+use App\Models\NcrAttachment;
 use App\Services\NcrService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * REST API for Non-Conformance Reports.
@@ -76,6 +82,7 @@ class NcrController extends Controller
             'dispositioner:id,name,email',
             'closer:id,name,email',
             'source',
+            'attachments.uploader:id,name',
         ])->findOrFail($id);
 
         return response()->json(['ncr' => $ncr]);
@@ -209,6 +216,145 @@ class NcrController extends Controller
         }
 
         return response()->json(['ncr' => $ncr->fresh(['creator:id,name', 'dispositioner:id,name', 'closer:id,name'])]);
+    }
+
+    // ---- Attachments (doc 3.10) ----------------------------------------------
+
+    /**
+     * NCR attachment upload rules per doc 3.10.
+     * Enforced here rather than at DB layer so validation errors surface
+     * as clean 422 responses instead of Postgres foreign-key / check errors.
+     */
+    private const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+    private const ATTACHMENT_MAX_COUNT = 10;
+    private const ATTACHMENT_MIMES = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'application/pdf',
+    ];
+
+    public function uploadAttachment(Request $request, int $id): JsonResponse
+    {
+        $this->checkPermission('ncr.edit');
+
+        $ncr = Ncr::findOrFail($id);
+
+        if ($ncr->isClosed()) {
+            return response()->json([
+                'message' => "Cannot attach to closed NCR {$ncr->ncr_number} — audit trail is immutable after closure.",
+            ], 422);
+        }
+
+        $request->validate([
+            'file' => 'required|file|max:' . (self::ATTACHMENT_MAX_BYTES / 1024) . '|mimes:jpg,jpeg,png,pdf',
+        ]);
+
+        $file = $request->file('file');
+        if (! in_array($file->getMimeType(), self::ATTACHMENT_MIMES, true)) {
+            return response()->json(['message' => 'Only JPG, PNG, or PDF files are allowed.'], 422);
+        }
+
+        $existingCount = $ncr->attachments()->count();
+        if ($existingCount >= self::ATTACHMENT_MAX_COUNT) {
+            return response()->json([
+                'message' => 'Attachment limit reached (' . self::ATTACHMENT_MAX_COUNT . ' per NCR). Delete an existing file to add more.',
+            ], 422);
+        }
+
+        // Store under a UUID filename so users can't guess neighboring
+        // files by URL and there's zero collision risk across uploads.
+        $tenantKey = tenant()?->getTenantKey() ?? 'default';
+        $ext = strtolower($file->getClientOriginalExtension() ?: $file->extension() ?: 'bin');
+        $storedName = Str::uuid()->toString() . '.' . $ext;
+        $relDir = "ncr_attachments/{$tenantKey}/ncr_{$ncr->id}";
+        $storedPath = $file->storeAs($relDir, $storedName, 'local');
+
+        $attachment = NcrAttachment::create([
+            'ncr_id' => $ncr->id,
+            'original_filename' => $file->getClientOriginalName(),
+            'mime_type' => $file->getMimeType(),
+            'size_bytes' => $file->getSize(),
+            'storage_path' => $storedPath,
+            'uploaded_by' => $request->user()->id,
+        ]);
+
+        AuditLog::record('ncr.attachment.added', [
+            'subject_type' => Ncr::class,
+            'subject_id' => $ncr->id,
+            'meta' => [
+                'ncr_number' => $ncr->ncr_number,
+                'attachment_id' => $attachment->id,
+                'filename' => $attachment->original_filename,
+                'size' => $attachment->size_bytes,
+                'user_id' => $request->user()->id,
+            ],
+        ]);
+
+        return response()->json([
+            'attachment' => $attachment->fresh('uploader:id,name'),
+        ], 201);
+    }
+
+    /**
+     * Stream an attachment file with auth-gated access. The nested-id
+     * check makes sure a user can't fetch attachment X from a different
+     * NCR by guessing IDs.
+     */
+    public function attachmentFile(int $id, int $attachmentId): BinaryFileResponse|Response
+    {
+        $this->checkPermission('ncr.view');
+
+        $attachment = NcrAttachment::where('id', $attachmentId)
+            ->where('ncr_id', $id)
+            ->firstOrFail();
+
+        $absPath = Storage::disk('local')->path($attachment->storage_path);
+        if (! is_readable($absPath)) {
+            return response('File missing on disk', 404);
+        }
+
+        return response()->file($absPath, [
+            'Content-Type' => $attachment->mime_type,
+            'Content-Disposition' => 'inline; filename="' . addslashes($attachment->original_filename) . '"',
+            'Cache-Control' => 'private, no-cache, max-age=0',
+        ]);
+    }
+
+    public function deleteAttachment(Request $request, int $id, int $attachmentId): JsonResponse
+    {
+        $this->checkPermission('ncr.edit');
+
+        $ncr = Ncr::findOrFail($id);
+        if ($ncr->isClosed()) {
+            return response()->json([
+                'message' => "Cannot remove attachments from closed NCR {$ncr->ncr_number}.",
+            ], 422);
+        }
+
+        $attachment = NcrAttachment::where('id', $attachmentId)
+            ->where('ncr_id', $id)
+            ->firstOrFail();
+
+        // Only the uploader OR a user with ncr.edit can delete. We already
+        // gated on ncr.edit above; explicit uploader-only tier can land later.
+        $filename = $attachment->original_filename;
+
+        Storage::disk('local')->delete($attachment->storage_path);
+        $attachment->delete();
+
+        AuditLog::record('ncr.attachment.deleted', [
+            'subject_type' => Ncr::class,
+            'subject_id' => $ncr->id,
+            'meta' => [
+                'ncr_number' => $ncr->ncr_number,
+                'attachment_id' => $attachmentId,
+                'filename' => $filename,
+                'user_id' => $request->user()->id,
+            ],
+        ]);
+
+        return response()->json(['message' => 'Attachment removed']);
     }
 
     private function findSourceRow(string $shortName, int $id): Model

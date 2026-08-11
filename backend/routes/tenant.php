@@ -245,6 +245,11 @@ Route::prefix('api/v1')
                 Route::patch('{id}', [NcrController::class, 'update']);
                 Route::post('{id}/disposition', [NcrController::class, 'disposition']);
                 Route::post('{id}/close', [NcrController::class, 'close']);
+
+                // Attachments (doc 3.10)
+                Route::post('{id}/attachments', [NcrController::class, 'uploadAttachment']);
+                Route::get('{id}/attachments/{attachmentId}', [NcrController::class, 'attachmentFile']);
+                Route::delete('{id}/attachments/{attachmentId}', [NcrController::class, 'deleteAttachment']);
             });
 
             // Exports (Module 5 — Week 14). Bodies stubbed until Day 2-5.
