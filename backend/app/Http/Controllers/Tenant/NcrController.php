@@ -99,12 +99,18 @@ class NcrController extends Controller
     {
         $this->checkPermission('ncr.create');
 
+        // Required fields per doc 3.10 — AS9100 traceability + Pareto
+        // categorization mandates these four are captured at file time:
+        //   detection_point, defect_code, lot_serial, quantity_affected.
+        // The rest stay optional (Cost of Quality often filled later,
+        // cause emerges during investigation, walk-in defects may not
+        // have Char Ref / Requirement / Actual data).
         $data = $request->validate([
             'part_id' => 'nullable|integer|exists:parts,id',
             'inspection_session_id' => 'nullable|integer|exists:inspection_sessions,id',
-            'lot_serial' => 'nullable|string|max:100',
-            'quantity_affected' => 'nullable|integer|min:0',
-            'defect_code' => 'nullable|string|max:50',
+            'lot_serial' => 'required|string|max:100',
+            'quantity_affected' => 'required|integer|min:1',
+            'defect_code' => 'required|string|max:50',
             'source_type' => 'nullable|string|in:FaiForm3Row,CustomReportCharacteristic',
             'source_id' => 'nullable|integer|min:1',
             'characteristic_ref' => 'nullable|string|max:60',
@@ -117,7 +123,7 @@ class NcrController extends Controller
             'labor_hours' => 'nullable|numeric|min:0|max:9999.99',
             'scrap_value' => 'nullable|numeric|min:0|max:99999999.99',
             'detected_by' => 'nullable|integer|exists:users,id',
-            'detection_point' => 'nullable|in:' . implode(',', Ncr::DETECTION_POINTS),
+            'detection_point' => 'required|in:' . implode(',', Ncr::DETECTION_POINTS),
         ]);
 
         try {

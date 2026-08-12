@@ -86,8 +86,21 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
     setScrapValue("")
   }
 
+  // AS9100 traceability + Pareto categorization requires these four at
+  // file time (per doc 3.10). Button stays disabled until all are set.
+  const missingRequired: string[] = []
+  if (!detectionPoint) missingRequired.push("Detection Point")
+  if (!defectCode.trim()) missingRequired.push("Defect Code")
+  if (!lotSerial.trim()) missingRequired.push("Lot / Serial #")
+  if (!qtyAffected || Number(qtyAffected) < 1) missingRequired.push("Quantity Affected")
+  const formValid = missingRequired.length === 0
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!formValid) {
+      toast.error("Missing required: " + missingRequired.join(", "))
+      return
+    }
     setSubmitting(true)
     try {
       const payload: Record<string, unknown> = {
@@ -97,10 +110,10 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
         requirement: requirement || null,
         actual_result: actualResult || null,
         unit: unit || null,
-        lot_serial: lotSerial || null,
-        quantity_affected: qtyAffected ? Number(qtyAffected) : null,
-        defect_code: defectCode || null,
-        detection_point: detectionPoint || null,
+        lot_serial: lotSerial.trim(),
+        quantity_affected: Number(qtyAffected),
+        defect_code: defectCode.trim(),
+        detection_point: detectionPoint,
         material_cost: materialCost ? Number(materialCost) : null,
         labor_hours: laborHours ? Number(laborHours) : null,
         scrap_value: scrapValue ? Number(scrapValue) : null,
@@ -236,13 +249,18 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="ncr-detection-point">Detection Point</Label>
+                <Label htmlFor="ncr-detection-point">
+                  Detection Point <span className="text-destructive">*</span>
+                </Label>
                 <Select
                   value={detectionPoint}
                   onValueChange={(v) => setDetectionPoint(v as NcrDetectionPoint)}
                   disabled={submitting}
                 >
-                  <SelectTrigger id="ncr-detection-point" className="w-full">
+                  <SelectTrigger
+                    id="ncr-detection-point"
+                    className={`w-full ${!detectionPoint ? "border-amber-300" : ""}`}
+                  >
                     <SelectValue placeholder="Where caught?" />
                   </SelectTrigger>
                   <SelectContent>
@@ -255,13 +273,17 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="ncr-defect-code">Defect Code</Label>
+                <Label htmlFor="ncr-defect-code">
+                  Defect Code <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="ncr-defect-code"
                   value={defectCode}
                   onChange={(e) => setDefectCode(e.target.value)}
                   placeholder="HOLE_OVERSIZE"
                   disabled={submitting}
+                  required
+                  className={!defectCode.trim() ? "border-amber-300" : ""}
                 />
               </div>
             </div>
@@ -274,25 +296,33 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="ncr-lot-serial">Lot / Serial #</Label>
+                <Label htmlFor="ncr-lot-serial">
+                  Lot / Serial # <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="ncr-lot-serial"
                   value={lotSerial}
                   onChange={(e) => setLotSerial(e.target.value)}
                   placeholder="S/N 042 or LOT-2026-0087"
                   disabled={submitting}
+                  required
+                  className={!lotSerial.trim() ? "border-amber-300" : ""}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="ncr-qty">Quantity Affected</Label>
+                <Label htmlFor="ncr-qty">
+                  Quantity Affected <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="ncr-qty"
                   type="number"
-                  min="0"
+                  min="1"
                   value={qtyAffected}
                   onChange={(e) => setQtyAffected(e.target.value)}
                   placeholder="1"
                   disabled={submitting}
+                  required
+                  className={!qtyAffected || Number(qtyAffected) < 1 ? "border-amber-300" : ""}
                 />
               </div>
             </div>
@@ -346,6 +376,12 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
             </div>
           </div>
 
+          {!formValid && (
+            <div className="rounded-md border border-amber-300 bg-amber-50/60 px-3 py-2 text-xs text-amber-800">
+              Required (per AS9100): {missingRequired.join(", ")}
+            </div>
+          )}
+
           <DialogFooter>
             <Button
               type="button"
@@ -355,7 +391,11 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button
+              type="submit"
+              disabled={submitting || !formValid}
+              title={!formValid ? `Missing: ${missingRequired.join(", ")}` : "Create the NCR"}
+            >
               {submitting && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
               Create NCR
             </Button>
