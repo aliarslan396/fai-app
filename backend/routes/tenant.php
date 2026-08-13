@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\BalloonController;
+use App\Http\Controllers\Tenant\CapaController;
 use App\Http\Controllers\Tenant\CharacteristicController;
 use App\Http\Controllers\Tenant\ExportController;
 use App\Http\Controllers\Tenant\GaugeController;
@@ -251,6 +252,15 @@ Route::prefix('api/v1')
                 Route::post('{id}/attachments', [NcrController::class, 'uploadAttachment']);
                 Route::get('{id}/attachments/{attachmentId}', [NcrController::class, 'attachmentFile']);
                 Route::delete('{id}/attachments/{attachmentId}', [NcrController::class, 'deleteAttachment']);
+
+                // Escalate to CAPA (doc 3.10)
+                Route::post('{id}/escalate', [NcrController::class, 'escalateToCapa']);
+            });
+
+            // CAPA — stub scope (Sprint 1). Full 5-tab workflow in Sprint 2.
+            Route::prefix('capas')->group(function () {
+                Route::get('/', [CapaController::class, 'index']);
+                Route::get('{id}', [CapaController::class, 'show']);
             });
 
             // Exports (Module 5 — Week 14). Bodies stubbed until Day 2-5.

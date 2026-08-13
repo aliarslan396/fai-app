@@ -11,7 +11,21 @@ import {
   CheckCircle2,
   Info,
   ShieldCheck,
+  GitBranch,
 } from "lucide-react"
+import { toast } from "sonner"
+import api from "@/lib/api"
+import { getErrorMessage } from "@/lib/errors"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -63,6 +77,25 @@ export default function NcrDetailPage() {
   const [dispOpen, setDispOpen] = useState(false)
   const [verifyOpen, setVerifyOpen] = useState(false)
   const [closeOpen, setCloseOpen] = useState(false)
+  const [escalateConfirm, setEscalateConfirm] = useState(false)
+  const [escalating, setEscalating] = useState(false)
+
+  const handleEscalate = async () => {
+    if (!ncr) return
+    setEscalating(true)
+    try {
+      const { data } = await api.post<{ capa: { id: number; capa_number: string } }>(
+        `/ncrs/${ncr.id}/escalate`,
+      )
+      toast.success(`Escalated to ${data.capa.capa_number}`)
+      setEscalateConfirm(false)
+      void refetch()
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Escalate failed"))
+    } finally {
+      setEscalating(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -106,6 +139,16 @@ export default function NcrDetailPage() {
             <Badge variant="outline" className={STATUS_COLOR[ncr.status]}>
               {STATUS_LABEL[ncr.status]}
             </Badge>
+            {ncr.capa_id && (
+              <Link
+                href={`/capa/${ncr.capa_id}`}
+                className="inline-flex items-center gap-1 rounded-md border border-purple-300 bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-800 hover:bg-purple-100"
+                title="Root cause investigation opened for this NCR"
+              >
+                <GitBranch className="h-3 w-3" />
+                Escalated to CAPA
+              </Link>
+            )}
             <span>· created {fmtDateTime(ncr.created_at)}</span>
             {ncr.creator && <span>by {ncr.creator.name}</span>}
           </div>
@@ -135,6 +178,16 @@ export default function NcrDetailPage() {
             >
               <CheckCircle2 className="mr-1 h-4 w-4" />
               Close NCR
+            </Button>
+          )}
+          {ncr.status !== "open" && !ncr.capa_id && canEdit && (
+            <Button
+              variant="outline"
+              onClick={() => setEscalateConfirm(true)}
+              title="Open a CAPA — root cause investigation for a recurring or critical defect"
+            >
+              <GitBranch className="mr-1 h-4 w-4" />
+              Escalate to CAPA
             </Button>
           )}
         </div>
@@ -390,6 +443,33 @@ export default function NcrDetailPage() {
         ncr={ncr}
         onDone={() => void refetch()}
       />
+
+      <AlertDialog
+        open={escalateConfirm}
+        onOpenChange={(open) => !escalating && setEscalateConfirm(open)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <GitBranch className="h-4 w-4 text-purple-600" />
+              Escalate {ncr.ncr_number} to CAPA?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Opens a Corrective &amp; Preventive Action for root-cause investigation.
+              Part, defect code, quantity, and detection point copy over from this NCR.
+              This NCR and the new CAPA will be permanently linked. This action is
+              audit-logged.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={escalating}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleEscalate} disabled={escalating}>
+              {escalating && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+              Create CAPA
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

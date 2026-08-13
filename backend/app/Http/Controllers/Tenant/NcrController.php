@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\Capa;
 use App\Models\CustomReportCharacteristic;
 use App\Models\FaiForm3Row;
 use App\Models\Ncr;
 use App\Models\NcrAttachment;
+use App\Services\CapaService;
 use App\Services\NcrService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -38,7 +40,10 @@ class NcrController extends Controller
         'CustomReportCharacteristic' => CustomReportCharacteristic::class,
     ];
 
-    public function __construct(private NcrService $service) {}
+    public function __construct(
+        private NcrService $service,
+        private CapaService $capaService,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -252,6 +257,31 @@ class NcrController extends Controller
         }
 
         return response()->json(['ncr' => $ncr->fresh(['creator:id,name', 'dispositioner:id,name', 'closer:id,name'])]);
+    }
+
+    /**
+     * Escalate NCR to CAPA per doc 3.10. Creates a new CAPA record
+     * pre-populated from this NCR's data, links both records
+     * bidirectionally, returns the CAPA identifier so the frontend
+     * can jump to the CAPA page.
+     */
+    public function escalateToCapa(Request $request, int $id): JsonResponse
+    {
+        $this->checkPermission('ncr.edit');
+
+        $ncr = Ncr::with('part:id,part_number')->findOrFail($id);
+
+        try {
+            $capa = $this->capaService->createFromNcr($request->user(), $ncr);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => "Escalated to {$capa->capa_number}",
+            'capa' => $capa,
+            'ncr' => $ncr->fresh(['creator:id,name', 'detector:id,name']),
+        ], 201);
     }
 
     // ---- Attachments (doc 3.10) ----------------------------------------------
