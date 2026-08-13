@@ -63,7 +63,8 @@ class FaiForm1Controller extends Controller
                 ]);
 
                 $session->fai_id = $fai->id;
-                $session->save();
+                $session->save();                $session->save();
+
 
                 FaiForm2::create([
                     'fai_form1_id' => $fai->id,
@@ -104,6 +105,7 @@ class FaiForm1Controller extends Controller
             'plan:id,plan_number,plan_name,balloon_count,characteristic_count',
             'session:id,session_type,current_step,step1_complete,step2_complete,step3_complete,step4_complete,step5_complete,step6_complete',
         ])->findOrFail($id);
+
 
         return response()->json(['form1' => $form1]);
     }
@@ -194,8 +196,35 @@ class FaiForm1Controller extends Controller
             ->where('id', $rowId)
             ->firstOrFail()
             ->delete();
-
         return response()->json(['message' => 'Index row deleted']);
+    }
+
+    /**
+     * Edit an existing Assembly Index row (fields 15-18). Blocked once
+     * the parent FAI is locked so audit history stays intact.
+     */
+    public function updateIndexRow(Request $request, int $id, int $rowId): JsonResponse
+    {
+        $this->checkPermission('inspections.edit');
+
+        $form1 = FaiForm1::findOrFail($id);
+        if ($form1->isLocked()) {
+            abort(409, 'FAI is locked.');
+        }
+
+        $data = $request->validate([
+            'field15_part_number' => 'sometimes|required|string|max:100',
+            'field16_part_name' => 'nullable|string|max:200',
+            'field17_part_type' => 'nullable|in:raw,sub,assembly,finish',
+            'field18_fair_identifier' => 'nullable|string|max:100',
+        ]);
+
+        $row = FaiForm1Index::where('fai_form1_id', $form1->id)
+            ->where('id', $rowId)
+            ->firstOrFail();
+        $row->update($data);
+
+        return response()->json(['index_row' => $row->fresh()]);
     }
 
     /**

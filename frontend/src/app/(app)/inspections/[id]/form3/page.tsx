@@ -30,6 +30,7 @@ import { ExportMenu } from "@/components/export-menu"
 import { CreateNcrDialog } from "@/components/ncr/create-ncr-dialog"
 import { RelatedNcrsPanel, type RelatedNcrsPanelHandle } from "@/components/ncr/related-ncrs-panel"
 import { FaiStatusControls } from "@/components/fai-status-controls"
+import { AssemblyIndexPanel } from "@/components/fai/assembly-index-panel"
 import { useSignatures } from "@/lib/signatures"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
@@ -388,6 +389,13 @@ export default function Form3Page() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Assembly Index (Form 1 fields 15-18) per doc 3.4 */}
+      <AssemblyIndexPanel
+        formId={data.form1.id}
+        locked={data.form1.locked}
+        canEdit={canEdit}
+      />
 
       {/* Form 3 measurement table */}
       <Card>

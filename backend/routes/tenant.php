@@ -194,6 +194,7 @@ Route::prefix('api/v1')
 
                 // Form 1 Assembly Index rows
                 Route::post('{id}/index', [FaiForm1Controller::class, 'storeIndexRow']);
+                Route::patch('{id}/index/{row_id}', [FaiForm1Controller::class, 'updateIndexRow']);
                 Route::delete('{id}/index/{row_id}', [FaiForm1Controller::class, 'destroyIndexRow']);
 
                 // Form 2
