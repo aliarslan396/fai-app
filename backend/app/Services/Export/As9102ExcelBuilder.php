@@ -472,9 +472,9 @@ class As9102ExcelBuilder
                 $sheet->getRowDimension($imageAnchor + $r)->setRowHeight(20);
             }
 
-            // Signature 200px wide per doc, stamp 150px (circular, needs less width than sig)
+            // Signature 200px wide per doc, stamp 200x200 (circular double-ring needs room to read)
             $this->embedImage($sheet, $sig->signature_image_path, "A{$imageAnchor}", 150, 200);
-            $this->embedImage($sheet, $sig->stamp_image_path, "E{$imageAnchor}", 150, 150);
+            $this->embedImage($sheet, $sig->stamp_image_path, "E{$imageAnchor}", 200, 200);
 
             $rowIdx = $imageAnchor + 9;
         }
