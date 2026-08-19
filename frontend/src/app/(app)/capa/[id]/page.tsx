@@ -2,41 +2,59 @@
 
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, GitBranch, Loader2, Info } from "lucide-react"
+import {
+  ArrowLeft,
+  CalendarCheck,
+  CheckSquare,
+  FileText,
+  GitBranch,
+  Loader2,
+  Lock,
+  ShieldCheck,
+  Target,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { CAPA_STATUS_COLOR, CAPA_STATUS_LABEL, useCapa } from "@/lib/capas"
+import { Card, CardContent } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  CAPA_STATUS_COLOR,
+  CAPA_STATUS_LABEL,
+  tabUnlocked,
+  useCapa,
+} from "@/lib/capas"
+import { ProblemTab } from "@/components/capa/problem-tab"
+import { FiveWhyTab } from "@/components/capa/five-why-tab"
+import { ActionPlanTab } from "@/components/capa/action-plan-tab"
+import { ApprovalTab } from "@/components/capa/approval-tab"
+import { EffectivenessTab } from "@/components/capa/effectiveness-tab"
 
-function fmtDateTime(iso: string | null | undefined) {
+function fmt(iso: string | null | undefined) {
   if (!iso) return "—"
   try {
     const d = new Date(iso)
-    if (Number.isNaN(d.getTime())) return iso
-    const yyyy = d.getFullYear()
-    const mm = String(d.getMonth() + 1).padStart(2, "0")
-    const dd = String(d.getDate()).padStart(2, "0")
-    const hh = String(d.getHours()).padStart(2, "0")
-    const mi = String(d.getMinutes()).padStart(2, "0")
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
   } catch {
     return iso
   }
 }
 
 /**
- * CAPA detail page — STUB scope. Displays the pre-populated CAPA
- * record + link back to the source NCR. Full 5-tab workflow
- * (Problem / 5-Why / Action Plan / Approval / Effectiveness) ships
- * in Sprint 2 alongside the disposition + effectiveness endpoints.
+ * CAPA detail page — full 5-tab workflow (Sprint 2, doc 3.10).
+ * Tabs unlock progressively as prior tabs are completed:
+ *   1 Problem            (always)
+ *   2 Root Cause 5-Why   (after Tab 1 saved → root_cause_pending)
+ *   3 Action Plan        (after all 5 whys + root cause summary → action_plan_pending)
+ *   4 Approval           (same time as Tab 3)
+ *   5 Effectiveness      (after full approval → approved)
  */
 export default function CapaDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
 
   const id = Number(params.id)
-  const { capa, loading, error } = useCapa(Number.isFinite(id) ? id : null)
+  const { capa, meta, loading, error, refetch } = useCapa(Number.isFinite(id) ? id : null)
 
   if (loading) {
     return (
@@ -59,6 +77,16 @@ export default function CapaDetailPage() {
     )
   }
 
+  const tabs = [
+    { value: "problem", label: "Problem", icon: FileText, unlocked: tabUnlocked(capa.status, 1) },
+    { value: "5why", label: "5-Why", icon: Target, unlocked: tabUnlocked(capa.status, 2) },
+    { value: "actions", label: "Action Plan", icon: CheckSquare, unlocked: tabUnlocked(capa.status, 3) },
+    { value: "approval", label: "Approval", icon: ShieldCheck, unlocked: tabUnlocked(capa.status, 4) },
+    { value: "effectiveness", label: "Effectiveness", icon: CalendarCheck, unlocked: tabUnlocked(capa.status, 5) },
+  ] as const
+
+  const initialTab = tabs.find((t) => t.unlocked && t.value === activeTabForStatus(capa.status))?.value ?? "problem"
+
   return (
     <div className="space-y-6">
       <div>
@@ -67,7 +95,7 @@ export default function CapaDetailPage() {
         </Button>
       </div>
 
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
             <GitBranch className="h-6 w-6 text-purple-600" />
@@ -85,92 +113,126 @@ export default function CapaDetailPage() {
                 Source: {capa.source_ncr.ncr_number}
               </Link>
             )}
-            <span>· created {fmtDateTime(capa.created_at)}</span>
+            <span>· created {fmt(capa.created_at)}</span>
             {capa.creator && <span>by {capa.creator.name}</span>}
           </div>
         </div>
       </div>
 
-      <Card className="border-purple-200 bg-purple-50/40">
-        <CardContent className="flex items-start gap-3 py-4 text-sm">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-purple-700" />
-          <div>
-            <div className="font-medium text-purple-900">Stub view</div>
-            <div className="text-purple-800">
-              This is the pre-populated CAPA record. The full workflow — 5-Why analysis,
-              action plan, approval, and effectiveness review — ships in the next sprint.
-              For now, the CAPA is linked to the source NCR and captured for audit trail.
-            </div>
-          </div>
+      {/* Context strip: part, defect */}
+      <Card>
+        <CardContent className="grid gap-3 py-4 sm:grid-cols-3">
+          <MetaCell label="Part">
+            {capa.part ? (
+              <>
+                <span className="font-mono font-medium">{capa.part.part_number}</span>
+                {capa.part.description && (
+                  <span className="ml-2 text-muted-foreground">{capa.part.description}</span>
+                )}
+              </>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </MetaCell>
+          <MetaCell label="Defect Code">
+            <span className="font-mono">{capa.defect_code ?? "—"}</span>
+          </MetaCell>
+          <MetaCell label="Source">
+            <span className="capitalize">{capa.source}</span>
+          </MetaCell>
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Problem</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <FieldRow label="Statement">
-              <span className="whitespace-pre-wrap text-sm">
-                {capa.problem_statement ?? "—"}
-              </span>
-            </FieldRow>
-            <FieldRow label="Defect Code">
-              <span className="font-mono text-sm">{capa.defect_code ?? "—"}</span>
-            </FieldRow>
-            <FieldRow label="Part">
-              {capa.part ? (
-                <span>
-                  <span className="font-medium">{capa.part.part_number}</span>
-                  {capa.part.description && (
-                    <span className="ml-2 text-muted-foreground">{capa.part.description}</span>
-                  )}
-                </span>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </FieldRow>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue={initialTab} className="space-y-4">
+        <TabsList className="grid h-auto w-full grid-cols-5">
+          {tabs.map((t) => (
+            <TabsTrigger
+              key={t.value}
+              value={t.value}
+              disabled={!t.unlocked}
+              className="flex items-center gap-2 py-2 text-xs sm:text-sm"
+            >
+              {t.unlocked ? <t.icon className="h-4 w-4" /> : <Lock className="h-3 w-3" />}
+              <span className="hidden sm:inline">{t.label}</span>
+              <span className="sm:hidden">{t.label.split(" ")[0]}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Origin</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <FieldRow label="Source">
-              {capa.source_ncr ? (
-                <Link
-                  href={`/ncr/${capa.source_ncr.id}`}
-                  className="font-mono text-sm text-primary hover:underline"
-                >
-                  {capa.source_ncr.ncr_number}
-                </Link>
-              ) : (
-                <span className="text-muted-foreground">Manual entry</span>
-              )}
-            </FieldRow>
-            <FieldRow label="Created">
-              <span className="text-sm">{fmtDateTime(capa.created_at)}</span>
-            </FieldRow>
-            <FieldRow label="Created By">
-              <span className="text-sm">{capa.creator?.name ?? "—"}</span>
-            </FieldRow>
-          </CardContent>
-        </Card>
-      </div>
+        <TabsContent value="problem">
+          <ProblemTab capa={capa} onSaved={refetch} />
+        </TabsContent>
+        <TabsContent value="5why">
+          {tabUnlocked(capa.status, 2) ? (
+            <FiveWhyTab capa={capa} onSaved={refetch} />
+          ) : (
+            <LockedNotice message="Complete the Problem tab first." />
+          )}
+        </TabsContent>
+        <TabsContent value="actions">
+          {tabUnlocked(capa.status, 3) ? (
+            <ActionPlanTab capa={capa} onSaved={refetch} />
+          ) : (
+            <LockedNotice message="Complete the 5-Why analysis first." />
+          )}
+        </TabsContent>
+        <TabsContent value="approval">
+          {tabUnlocked(capa.status, 4) && meta ? (
+            <ApprovalTab capa={capa} meta={meta} onSaved={refetch} />
+          ) : (
+            <LockedNotice message="Complete the 5-Why analysis first." />
+          )}
+        </TabsContent>
+        <TabsContent value="effectiveness">
+          {tabUnlocked(capa.status, 5) ? (
+            <EffectivenessTab capa={capa} onSaved={refetch} />
+          ) : (
+            <LockedNotice message="Get full approval first." />
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
 
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+function MetaCell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[140px_1fr] items-baseline gap-3">
-      <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
+    <div className="text-sm">
+      <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
       <div>{children}</div>
     </div>
   )
+}
+
+function LockedNotice({ message }: { message: string }) {
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+        <Lock className="h-4 w-4" />
+        {message}
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * Pick a sensible default active tab based on current CAPA status —
+ * jumps the user straight to the tab they need to work on next.
+ */
+function activeTabForStatus(status: string): string {
+  switch (status) {
+    case "open":
+      return "problem"
+    case "root_cause_pending":
+      return "5why"
+    case "action_plan_pending":
+      return "actions"
+    case "approved":
+    case "in_progress":
+    case "closed":
+    case "ineffective":
+      return "effectiveness"
+    default:
+      return "problem"
+  }
 }

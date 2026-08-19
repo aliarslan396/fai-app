@@ -258,10 +258,29 @@ Route::prefix('api/v1')
                 Route::post('{id}/escalate', [NcrController::class, 'escalateToCapa']);
             });
 
-            // CAPA — stub scope (Sprint 1). Full 5-tab workflow in Sprint 2.
+            // CAPA — full 5-tab workflow (Sprint 2, doc 3.10 + prompt 4.7).
             Route::prefix('capas')->group(function () {
                 Route::get('/', [CapaController::class, 'index']);
                 Route::get('{id}', [CapaController::class, 'show']);
+
+                // Tab 1 — Problem
+                Route::patch('{id}/problem', [CapaController::class, 'refineProblem']);
+
+                // Tab 2 — 5-Why root cause
+                Route::post('{id}/five-whys', [CapaController::class, 'saveFiveWhy']);
+                Route::post('{id}/root-cause/complete', [CapaController::class, 'completeRootCause']);
+
+                // Tab 3 — Action plan
+                Route::post('{id}/actions', [CapaController::class, 'addAction']);
+                Route::patch('{id}/actions/{actionId}', [CapaController::class, 'updateAction']);
+                Route::delete('{id}/actions/{actionId}', [CapaController::class, 'deleteAction']);
+
+                // Tab 4 — Approval (multi-role sign-off)
+                Route::post('{id}/approve', [CapaController::class, 'approve']);
+
+                // Tab 5 — Effectiveness review + close
+                Route::post('{id}/effectiveness/schedule', [CapaController::class, 'scheduleEffectiveness']);
+                Route::post('{id}/close', [CapaController::class, 'close']);
             });
 
             // Exports (Module 5 — Week 14). Bodies stubbed until Day 2-5.
