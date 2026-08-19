@@ -85,6 +85,12 @@ export interface Ncr {
   verifier?: NcrUserRef | null
   closer?: NcrUserRef | null
   attachments?: NcrAttachment[]
+  /**
+   * Count of NCRs sharing this (part_id + defect_code) within the last
+   * 30 days, injected by the list endpoint. `1` means this row is
+   * unique in the window; `3+` is a repeat-defect signal.
+   */
+  repeat_count_30d?: number
 }
 
 export interface NcrListResponse {

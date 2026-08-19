@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/empty-state"
+import { RepeatDefectsWidget } from "@/components/ncr/repeat-defects-widget"
 import { useAuthStore } from "@/lib/auth-store"
 import api from "@/lib/api"
 
@@ -320,6 +321,9 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Repeat Defects — QM view of recurring part+defect clusters */}
+      {hasPermission("ncr.view") && <RepeatDefectsWidget />}
 
       {/* Pending Reviews — QA Manager queue of submitted FAI forms awaiting acceptance */}
       {hasPermission("inspections.sign") && (

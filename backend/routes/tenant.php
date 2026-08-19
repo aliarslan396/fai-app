@@ -242,6 +242,7 @@ Route::prefix('api/v1')
             // NCR (Module 6 — Week 15). Auto-numbered NCR-YYYY-NNNN.
             Route::prefix('ncrs')->group(function () {
                 Route::get('/', [NcrController::class, 'index']);
+                Route::get('repeats', [NcrController::class, 'repeats']);
                 Route::post('/', [NcrController::class, 'store']);
                 Route::get('{id}', [NcrController::class, 'show']);
                 Route::patch('{id}', [NcrController::class, 'update']);

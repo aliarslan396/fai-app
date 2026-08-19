@@ -78,7 +78,42 @@ class NcrController extends Controller
             $query->where('detection_point', $detectionPoint);
         }
 
-        return response()->json(['ncrs' => $query->paginate(50)]);
+        $paginator = $query->paginate(50);
+
+        // Annotate each row with a `repeat_count_30d` — how many NCRs
+        // share this (part, defect) combo in the last 30 days. Powers
+        // the "3rd this month" badge in the list without a per-row
+        // subquery (single grouped lookup, then dict-merged in PHP).
+        $pairs = collect($paginator->items())
+            ->filter(fn ($n) => $n->part_id && $n->defect_code)
+            ->map(fn ($n) => ['part_id' => $n->part_id, 'defect_code' => $n->defect_code])
+            ->unique(fn ($p) => $p['part_id'] . '|' . $p['defect_code'])
+            ->values();
+
+        if ($pairs->isNotEmpty()) {
+            $since = now()->subDays(30);
+            $counts = Ncr::query()
+                ->selectRaw('part_id, defect_code, COUNT(*) as c')
+                ->where(function ($q) use ($pairs) {
+                    foreach ($pairs as $p) {
+                        $q->orWhere(function ($qq) use ($p) {
+                            $qq->where('part_id', $p['part_id'])
+                                ->where('defect_code', $p['defect_code']);
+                        });
+                    }
+                })
+                ->where('created_at', '>=', $since)
+                ->groupBy('part_id', 'defect_code')
+                ->get()
+                ->mapWithKeys(fn ($row) => [$row->part_id . '|' . $row->defect_code => (int) $row->c]);
+
+            foreach ($paginator->items() as $item) {
+                $key = $item->part_id . '|' . $item->defect_code;
+                $item->repeat_count_30d = $counts[$key] ?? 1;
+            }
+        }
+
+        return response()->json(['ncrs' => $paginator]);
     }
 
     public function show(int $id): JsonResponse
@@ -153,7 +188,110 @@ class NcrController extends Controller
             return response()->json(['message' => $e->getMessage()], 400);
         }
 
-        return response()->json(['ncr' => $ncr->fresh(['creator:id,name'])], 201);
+        $fresh = $ncr->fresh(['creator:id,name']);
+        $warning = $this->buildRepeatWarning($fresh);
+
+        return response()->json([
+            'ncr' => $fresh,
+            'repeat_warning' => $warning,
+        ], 201);
+    }
+
+    /**
+     * List recurring (part_id + defect_code) NCR clusters within the
+     * last N days. Fuel for the dashboard "Repeat Defects" widget and
+     * the driver for CAPA-escalation nudges.
+     */
+    public function repeats(Request $request): JsonResponse
+    {
+        $this->checkPermission('ncr.view');
+
+        $days = (int) $request->query('days', 30);
+        $days = max(1, min($days, 365));
+        $threshold = max(2, (int) $request->query('threshold', 3));
+        $since = now()->subDays($days);
+
+        $rows = Ncr::query()
+            ->whereNotNull('part_id')
+            ->whereNotNull('defect_code')
+            ->where('created_at', '>=', $since)
+            ->selectRaw('part_id, defect_code, COUNT(*) as ncr_count, MIN(created_at) as first_at, MAX(created_at) as last_at')
+            ->groupBy('part_id', 'defect_code')
+            ->havingRaw('COUNT(*) >= ?', [$threshold])
+            ->orderByDesc('ncr_count')
+            ->limit(50)
+            ->get();
+
+        $partIds = $rows->pluck('part_id')->unique()->values();
+        $parts = \App\Models\Part::whereIn('id', $partIds)->get(['id', 'part_number', 'description'])->keyBy('id');
+
+        // Pull the latest NCR per (part, defect) so the widget can link
+        // straight to a representative record, plus a flag telling the
+        // UI whether a CAPA is already open (avoids duplicate escalation).
+        $latest = Ncr::query()
+            ->select('id', 'part_id', 'defect_code', 'ncr_number', 'capa_id', 'status')
+            ->whereIn('part_id', $partIds)
+            ->where('created_at', '>=', $since)
+            ->orderByDesc('created_at')
+            ->get()
+            ->groupBy(fn ($n) => $n->part_id . '|' . $n->defect_code);
+
+        $data = $rows->map(function ($r) use ($parts, $latest) {
+            $key = $r->part_id . '|' . $r->defect_code;
+            $recent = $latest[$key] ?? collect();
+            $capaLinked = $recent->firstWhere(fn ($n) => $n->capa_id !== null);
+
+            return [
+                'part_id' => $r->part_id,
+                'part' => $parts[$r->part_id] ?? null,
+                'defect_code' => $r->defect_code,
+                'ncr_count' => (int) $r->ncr_count,
+                'first_at' => $r->first_at,
+                'last_at' => $r->last_at,
+                'latest_ncr' => $recent->first(),
+                'existing_capa_id' => $capaLinked?->capa_id,
+            ];
+        })->values();
+
+        return response()->json([
+            'clusters' => $data,
+            'window_days' => $days,
+            'threshold' => $threshold,
+        ]);
+    }
+
+    /**
+     * When a fresh NCR would make a (part, defect) cluster hit the
+     * escalation threshold, return a small payload the frontend can
+     * turn into a toast + one-click CAPA button. Returns null if the
+     * NCR is below the threshold or a CAPA already covers it.
+     */
+    private function buildRepeatWarning(Ncr $ncr, int $days = 30, int $threshold = 3): ?array
+    {
+        if (! $ncr->part_id || ! $ncr->defect_code) {
+            return null;
+        }
+
+        $since = now()->subDays($days);
+        $sibling = Ncr::query()
+            ->where('part_id', $ncr->part_id)
+            ->where('defect_code', $ncr->defect_code)
+            ->where('created_at', '>=', $since);
+
+        $count = (clone $sibling)->count();
+        if ($count < $threshold) {
+            return null;
+        }
+
+        $existingCapaId = (clone $sibling)->whereNotNull('capa_id')->value('capa_id');
+
+        return [
+            'count' => $count,
+            'window_days' => $days,
+            'part_id' => $ncr->part_id,
+            'defect_code' => $ncr->defect_code,
+            'existing_capa_id' => $existingCapaId,
+        ];
     }
 
     public function disposition(Request $request, int $id): JsonResponse

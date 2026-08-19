@@ -32,6 +32,7 @@ import {
   type NcrSeverity,
   type NcrDetectionPoint,
 } from "@/lib/ncrs"
+import type { RepeatWarning } from "@/lib/ncr-repeats"
 
 interface Props {
   open: boolean
@@ -123,8 +124,44 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
       if (prefill?.part_id) payload.part_id = prefill.part_id
       if (prefill?.inspection_session_id) payload.inspection_session_id = prefill.inspection_session_id
 
-      const { data } = await api.post<{ ncr: Ncr }>("/ncrs", payload)
+      const { data } = await api.post<{ ncr: Ncr; repeat_warning: RepeatWarning | null }>(
+        "/ncrs",
+        payload,
+      )
       toast.success(`${data.ncr.ncr_number} created`)
+
+      // Repeat-defect nudge: if this NCR pushed the (part, defect)
+      // combo to the CAPA-escalation threshold, surface a persistent
+      // toast with a one-click CAPA link. Skipped if a CAPA already
+      // covers the combo — no duplicate escalation.
+      const warn = data.repeat_warning
+      if (warn && warn.count >= 3 && !warn.existing_capa_id) {
+        toast.warning(
+          `This is the ${warn.count}${ordinalSuffix(warn.count)} NCR for this part + defect in the last ${warn.window_days} days. Open a CAPA?`,
+          {
+            duration: 15000,
+            action: {
+              label: "Escalate",
+              onClick: async () => {
+                try {
+                  const { data: esc } = await api.post<{ capa: { id: number; capa_number: string } }>(
+                    `/ncrs/${data.ncr.id}/escalate`,
+                  )
+                  toast.success(`${esc.capa.capa_number} opened`)
+                  if (typeof window !== "undefined") {
+                    window.location.href = `/capa/${esc.capa.id}`
+                  }
+                } catch (e) {
+                  toast.error(getErrorMessage(e, "Failed to escalate"))
+                }
+              },
+            },
+          },
+        )
+      } else if (warn?.existing_capa_id) {
+        toast.info(`Related CAPA already open (#${warn.existing_capa_id}). No new escalation needed.`)
+      }
+
       onCreated?.(data.ncr)
       reset()
       onOpenChange(false)
@@ -136,6 +173,12 @@ export function CreateNcrDialog({ open, onOpenChange, prefill, onCreated }: Prop
   }
 
   const hasSnapshot = !!(prefill?.characteristic_ref || prefill?.requirement || prefill?.actual_result)
+
+  function ordinalSuffix(n: number): string {
+    const s = ["th", "st", "nd", "rd"]
+    const v = n % 100
+    return s[(v - 20) % 10] || s[v] || s[0]
+  }
 
   return (
     <Dialog

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { AlertTriangle, Plus, Loader2 } from "lucide-react"
+import { AlertOctagon, AlertTriangle, Plus, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -157,9 +157,21 @@ export default function NcrListPage() {
                 {ncrs.map((n) => (
                   <TableRow key={n.id} className="cursor-pointer">
                     <TableCell className="font-mono">
-                      <Link href={`/ncr/${n.id}`} className="text-primary hover:underline">
-                        {n.ncr_number}
-                      </Link>
+                      <div className="flex items-center gap-1">
+                        <Link href={`/ncr/${n.id}`} className="text-primary hover:underline">
+                          {n.ncr_number}
+                        </Link>
+                        {(n.repeat_count_30d ?? 1) >= 3 && (
+                          <Badge
+                            variant="outline"
+                            title={`This part+defect has ${n.repeat_count_30d} NCRs in the last 30 days — CAPA candidate.`}
+                            className="ml-1 gap-1 border-red-300 bg-red-50 text-[10px] text-red-800"
+                          >
+                            <AlertOctagon className="h-3 w-3" />
+                            {n.repeat_count_30d}×
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {n.part ? (
