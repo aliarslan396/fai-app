@@ -65,6 +65,21 @@ class Gauge extends Model
         return $this->hasMany(GaugeCalibration::class)->orderByDesc('calibrated_at');
     }
 
+    public function ootAssessments(): HasMany
+    {
+        return $this->hasMany(GaugeOotAssessment::class)->orderByDesc('assessed_at');
+    }
+
+    public function checkouts(): HasMany
+    {
+        return $this->hasMany(GaugeCheckout::class)->orderByDesc('checked_out_at');
+    }
+
+    public function openCheckout()
+    {
+        return $this->hasOne(GaugeCheckout::class)->whereNull('checked_in_at');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(TenantUser::class, 'created_by');

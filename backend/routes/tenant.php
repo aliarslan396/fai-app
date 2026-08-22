@@ -231,11 +231,20 @@ Route::prefix('api/v1')
             // Gauge Management (Module 3.11 — Week 15). Cal history + status auto-computed.
             Route::prefix('gauges')->group(function () {
                 Route::get('/', [GaugeController::class, 'index']);
+                Route::get('lookup', [GaugeController::class, 'lookup']);
                 Route::post('/', [GaugeController::class, 'store']);
                 Route::get('{id}', [GaugeController::class, 'show']);
                 Route::patch('{id}', [GaugeController::class, 'update']);
                 Route::delete('{id}', [GaugeController::class, 'destroy']);
                 Route::post('{id}/calibrations', [GaugeController::class, 'recordCalibration']);
+
+                // OOT impact assessment (Sprint 2 item 7)
+                Route::post('{id}/calibrations/{calibrationId}/oot', [GaugeController::class, 'recordOot']);
+
+                // Checkout log (Sprint 2 item 7)
+                Route::post('{id}/checkouts', [GaugeController::class, 'checkOut']);
+                Route::patch('{id}/checkouts/{checkoutId}/checkin', [GaugeController::class, 'checkIn']);
+
                 Route::get('calibrations/{calibrationId}/cert', [GaugeController::class, 'certFile']);
             });
 

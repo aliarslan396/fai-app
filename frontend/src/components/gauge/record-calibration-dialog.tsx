@@ -70,10 +70,25 @@ export function RecordCalibrationDialog({ open, onOpenChange, gauge, onDone }: P
       if (notes) form.append("notes", notes)
       if (certFile) form.append("cert_file", certFile)
 
-      await api.post(`/gauges/${gauge.id}/calibrations`, form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
-      toast.success(`Calibration logged for ${gauge.gauge_id}`)
+      const { data } = await api.post<{ calibration: unknown; gauge: Gauge }>(
+        `/gauges/${gauge.id}/calibrations`,
+        form,
+        { headers: { "Content-Type": "multipart/form-data" } },
+      )
+
+      const wasOos = gauge.out_of_service
+      const nowOos = data.gauge?.out_of_service ?? true
+
+      if (result === "fail_oot") {
+        toast.warning(`${gauge.gauge_id} calibration logged · gauge is now Out of Service`)
+      } else if (wasOos && !nowOos) {
+        toast.success(`${gauge.gauge_id} calibration logged · gauge returned to Current`)
+      } else if (wasOos && nowOos) {
+        toast.info(`${gauge.gauge_id} calibration logged · Out of Service stays (clear it manually if fixed)`)
+      } else {
+        toast.success(`Calibration logged for ${gauge.gauge_id}`)
+      }
+
       onDone?.()
       reset()
       onOpenChange(false)
@@ -121,7 +136,7 @@ export function RecordCalibrationDialog({ open, onOpenChange, gauge, onDone }: P
             <div className="space-y-2">
               <Label htmlFor="cal-res">Result *</Label>
               <Select value={result} onValueChange={(v) => setResult(v as CalResult)} disabled={submitting}>
-                <SelectTrigger id="cal-res"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="cal-res" className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pass">Pass</SelectItem>
                   <SelectItem value="limited_use">Limited Use</SelectItem>
@@ -151,6 +166,14 @@ export function RecordCalibrationDialog({ open, onOpenChange, gauge, onDone }: P
           {result === "fail_oot" && (
             <div className="rounded-md border border-red-200 bg-red-50/60 p-3 text-xs text-red-800">
               ⚠ Failed calibration will automatically pull this gauge out of service.
+            </div>
+          )}
+
+          {result === "pass" && gauge.out_of_service && (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-800">
+              ✓ This gauge is currently Out of Service. A Pass result will automatically
+              return it to service <em>if</em> the Out of Service was caused by a failed cal.
+              A physical-damage flag stays until you clear it manually.
             </div>
           )}
 

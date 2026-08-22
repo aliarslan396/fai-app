@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Gauge;
 use App\Models\GaugeCalibration;
+use App\Models\GaugeCheckout;
 use App\Services\GaugeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
@@ -50,9 +52,54 @@ class GaugeController extends Controller
             'creator:id,name',
             'calibrations.recorder:id,name',
             'calibrations.ncr:id,ncr_number,status',
+            'ootAssessments.assessor:id,name',
+            'ootAssessments.ncr:id,ncr_number,status',
+            'ootAssessments.calibration:id,calibrated_at,cert_number',
+            'checkouts.holder:id,name',
+            'checkouts.returner:id,name',
+            'openCheckout.holder:id,name',
         ])->findOrFail($id);
 
         return response()->json(['gauge' => $gauge]);
+    }
+
+    /**
+     * Lightweight autocomplete for Form 3 gage-ID lookup.
+     * Returns id, gauge_id, type, status, days_until_due — enough
+     * to show a picker with a live status badge without hitting show().
+     */
+    public function lookup(Request $request): JsonResponse
+    {
+        $this->checkPermission('gauges.view');
+
+        $q = trim((string) $request->query('q', ''));
+        $limit = min((int) $request->query('limit', 20), 50);
+
+        $query = Gauge::query()
+            ->where('out_of_service', false)
+            ->orderBy('gauge_id')
+            ->limit($limit);
+
+        if ($q !== '') {
+            $query->where(function ($qq) use ($q) {
+                $qq->where('gauge_id', 'ilike', '%' . $q . '%')
+                    ->orWhere('type', 'ilike', '%' . $q . '%')
+                    ->orWhere('serial_number', 'ilike', '%' . $q . '%');
+            });
+        }
+
+        $gauges = $query->get(['id', 'gauge_id', 'type', 'serial_number', 'last_calibrated_at', 'next_cal_due', 'out_of_service'])
+            ->map(fn ($g) => [
+                'id' => $g->id,
+                'gauge_id' => $g->gauge_id,
+                'type' => $g->type,
+                'serial_number' => $g->serial_number,
+                'status' => $g->status,
+                'days_until_due' => $g->days_until_due,
+                'next_cal_due' => $g->next_cal_due?->toDateString(),
+            ]);
+
+        return response()->json(['gauges' => $gauges]);
     }
 
     public function store(Request $request): JsonResponse
@@ -145,6 +192,78 @@ class GaugeController extends Controller
             'calibration' => $calibration->fresh(['recorder:id,name']),
             'gauge' => $gauge->fresh(),
         ], 201);
+    }
+
+    // ---------------------------------------------------------- OOT
+
+    public function recordOot(Request $request, int $id, int $calibrationId): JsonResponse
+    {
+        $this->checkPermission('gauges.calibrate');
+
+        $data = $request->validate([
+            'last_known_good_at' => 'nullable|date',
+            'parts_at_risk_summary' => 'nullable|string|max:5000',
+            'impact_analysis' => 'required|string|max:5000',
+            'containment_action' => 'nullable|string|max:2000',
+            'ncr_id' => 'nullable|integer|exists:ncrs,id',
+            'disposition' => 'required|string|in:accept_as_is,recall,investigate,no_impact',
+        ]);
+
+        $cal = GaugeCalibration::where('gauge_id', $id)->findOrFail($calibrationId);
+
+        try {
+            $assessment = $this->service->recordOotAssessment($request->user(), $cal, $data);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        }
+
+        return response()->json(['assessment' => $assessment], 201);
+    }
+
+    // ---------------------------------------------------------- Checkout
+
+    public function checkOut(Request $request, int $id): JsonResponse
+    {
+        $this->checkPermission('gauges.edit');
+
+        $data = $request->validate([
+            'checked_out_to' => 'required|integer|exists:users,id',
+            'job_reference' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:2000',
+        ]);
+
+        $gauge = Gauge::findOrFail($id);
+
+        try {
+            $checkout = $this->service->checkOut($request->user(), $gauge, $data);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        }
+
+        return response()->json(['checkout' => $checkout], 201);
+    }
+
+    public function checkIn(Request $request, int $id, int $checkoutId): JsonResponse
+    {
+        $this->checkPermission('gauges.edit');
+
+        $data = $request->validate([
+            'notes' => 'nullable|string|max:2000',
+        ]);
+
+        $checkout = GaugeCheckout::where('gauge_id', $id)->findOrFail($checkoutId);
+
+        try {
+            $updated = $this->service->checkIn($request->user(), $checkout, $data['notes'] ?? null);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['checkout' => $updated]);
     }
 
     public function certFile(int $calibrationId): Response|BinaryFileResponse

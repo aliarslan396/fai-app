@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\AuditLog;
 use App\Models\Gauge;
 use App\Models\GaugeCalibration;
+use App\Models\GaugeCheckout;
+use App\Models\GaugeOotAssessment;
 use App\Models\TenantUser;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
@@ -12,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use RuntimeException;
 
 /**
  * Single entry point for gauge + calibration mutations.
@@ -130,11 +133,21 @@ class GaugeService
                     $calibration->calibrated_at,
                     $gauge->calibration_interval_months,
                 );
-                // Failed cal auto-pulls gauge out of service
+                // Failed cal auto-pulls gauge out of service.
                 if ($calibration->result === GaugeCalibration::RESULT_FAIL_OOT) {
                     $gauge->out_of_service = true;
                     $gauge->out_of_service_reason = 'Failed calibration on ' . $calibration->calibrated_at
                         . ' (OOT) — cert ' . ($calibration->cert_number ?? 'N/A');
+                }
+                // Pass cal auto-returns to service ONLY when the OOS was
+                // itself cal-caused (system-set reason). Physical-damage
+                // or manually-flagged OOS stays OOS until a human clears
+                // it — we don't second-guess a human-authored reason.
+                elseif ($calibration->result === GaugeCalibration::RESULT_PASS
+                    && $gauge->out_of_service
+                    && $this->isCalRelatedOosReason($gauge->out_of_service_reason)) {
+                    $gauge->out_of_service = false;
+                    $gauge->out_of_service_reason = null;
                 }
                 $gauge->save();
             }
@@ -152,6 +165,143 @@ class GaugeService
 
             return $calibration;
         });
+    }
+
+    // -------------------------------------------------------------- OOT
+
+    /**
+     * Log an impact assessment against a failing calibration. Enforces
+     * one assessment per calibration (calibration_id is unique).
+     */
+    public function recordOotAssessment(TenantUser $assessor, GaugeCalibration $cal, array $data): GaugeOotAssessment
+    {
+        if ($cal->result !== GaugeCalibration::RESULT_FAIL_OOT) {
+            throw new RuntimeException('Impact assessments can only be logged against failed (OOT) calibrations.');
+        }
+        if (empty($data['impact_analysis'])) {
+            throw new InvalidArgumentException('Impact analysis is required.');
+        }
+        if (empty($data['disposition']) || ! in_array($data['disposition'], GaugeOotAssessment::DISPOSITIONS, true)) {
+            throw new InvalidArgumentException('Valid disposition is required.');
+        }
+
+        if (GaugeOotAssessment::where('calibration_id', $cal->id)->exists()) {
+            throw new RuntimeException('An impact assessment already exists for this calibration.');
+        }
+
+        return DB::transaction(function () use ($assessor, $cal, $data) {
+            $assessment = GaugeOotAssessment::create([
+                'gauge_id' => $cal->gauge_id,
+                'calibration_id' => $cal->id,
+                'last_known_good_at' => $data['last_known_good_at'] ?? null,
+                'parts_at_risk_summary' => $data['parts_at_risk_summary'] ?? null,
+                'impact_analysis' => $data['impact_analysis'],
+                'containment_action' => $data['containment_action'] ?? null,
+                'ncr_id' => $data['ncr_id'] ?? null,
+                'disposition' => $data['disposition'],
+                'assessed_by' => $assessor->id,
+                'assessed_at' => now(),
+            ]);
+
+            AuditLog::record('gauge.oot_assessed', [
+                'subject_type' => Gauge::class,
+                'subject_id' => $cal->gauge_id,
+                'meta' => [
+                    'assessment_id' => $assessment->id,
+                    'calibration_id' => $cal->id,
+                    'disposition' => $assessment->disposition,
+                    'ncr_id' => $assessment->ncr_id,
+                    'user_id' => $assessor->id,
+                ],
+            ]);
+
+            return $assessment->fresh(['assessor:id,name', 'ncr:id,ncr_number']);
+        });
+    }
+
+    // -------------------------------------------------------------- Checkout
+
+    public function checkOut(TenantUser $creator, Gauge $gauge, array $data): GaugeCheckout
+    {
+        if ($gauge->out_of_service) {
+            throw new RuntimeException("Gauge {$gauge->gauge_id} is out of service and cannot be checked out.");
+        }
+        if (GaugeCheckout::where('gauge_id', $gauge->id)->whereNull('checked_in_at')->exists()) {
+            throw new RuntimeException("Gauge {$gauge->gauge_id} is already checked out. Check it in first.");
+        }
+        if (empty($data['checked_out_to'])) {
+            throw new InvalidArgumentException('checked_out_to (user id) is required.');
+        }
+
+        return DB::transaction(function () use ($creator, $gauge, $data) {
+            $checkout = GaugeCheckout::create([
+                'gauge_id' => $gauge->id,
+                'checked_out_to' => $data['checked_out_to'],
+                'job_reference' => $data['job_reference'] ?? null,
+                'checked_out_at' => now(),
+                'notes' => $data['notes'] ?? null,
+                'created_by' => $creator->id,
+            ]);
+
+            AuditLog::record('gauge.checked_out', [
+                'subject_type' => Gauge::class,
+                'subject_id' => $gauge->id,
+                'meta' => [
+                    'checkout_id' => $checkout->id,
+                    'to_user_id' => $checkout->checked_out_to,
+                    'job_reference' => $checkout->job_reference,
+                    'user_id' => $creator->id,
+                ],
+            ]);
+
+            return $checkout->fresh(['holder:id,name']);
+        });
+    }
+
+    public function checkIn(TenantUser $user, GaugeCheckout $checkout, ?string $notes = null): GaugeCheckout
+    {
+        if ($checkout->checked_in_at) {
+            throw new RuntimeException('This checkout is already closed.');
+        }
+
+        return DB::transaction(function () use ($user, $checkout, $notes) {
+            $checkout->checked_in_at = now();
+            $checkout->checked_in_by = $user->id;
+            if ($notes !== null && $notes !== '') {
+                $checkout->notes = trim(($checkout->notes ? $checkout->notes . "\n\n" : '') . "[Check-in] " . $notes);
+            }
+            $checkout->save();
+
+            AuditLog::record('gauge.checked_in', [
+                'subject_type' => Gauge::class,
+                'subject_id' => $checkout->gauge_id,
+                'meta' => [
+                    'checkout_id' => $checkout->id,
+                    'user_id' => $user->id,
+                ],
+            ]);
+
+            return $checkout->fresh(['holder:id,name', 'returner:id,name']);
+        });
+    }
+
+    // -------------------------------------------------------------- helpers
+
+    /**
+     * True when the OOS reason looks like a system-set cal failure —
+     * safe to auto-clear when a fresh pass cal lands. False for
+     * human-authored reasons (physical damage, retired, etc.), which
+     * must be cleared manually so the human confirms the fix.
+     */
+    private function isCalRelatedOosReason(?string $reason): bool
+    {
+        if (! $reason) {
+            return true; // no reason recorded — treat as cal-related
+        }
+        $lower = strtolower($reason);
+        return str_contains($lower, 'failed calibration')
+            || str_contains($lower, 'oot')
+            || str_contains($lower, 'overdue');
     }
 
     private function computeNextDue(mixed $lastCalibrated, int $intervalMonths): ?string

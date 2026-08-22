@@ -28,6 +28,7 @@ import { SignatureBlock } from "@/components/signature-block"
 import { SignHistoryPanel } from "@/components/sign-history-panel"
 import { ExportMenu } from "@/components/export-menu"
 import { CreateNcrDialog } from "@/components/ncr/create-ncr-dialog"
+import { GaugeAutocomplete } from "@/components/gauge/gauge-autocomplete"
 import { RelatedNcrsPanel, type RelatedNcrsPanelHandle } from "@/components/ncr/related-ncrs-panel"
 import { FaiStatusControls } from "@/components/fai-status-controls"
 import { AssemblyIndexPanel } from "@/components/fai/assembly-index-panel"
@@ -493,12 +494,14 @@ export default function Form3Page() {
                           />
                         </TableCell>
                         <TableCell>
-                          <Input
-                            value={(e.field10_qualified_tooling ?? row.field10_qualified_tooling) || ""}
-                            onChange={(ev) => queueSave(row.id, { field10_qualified_tooling: ev.target.value })}
+                          <GaugeAutocomplete
+                            value={(e.field10_qualified_tooling ?? row.field10_qualified_tooling) || null}
+                            onChange={(gaugeId) =>
+                              queueSave(row.id, { field10_qualified_tooling: gaugeId ?? "" })
+                            }
                             disabled={!canEdit || data.form1.locked}
-                            placeholder="Calipers"
-                            className="h-8 text-xs"
+                            placeholder="Pick gauge..."
+                            className="min-w-[180px]"
                           />
                         </TableCell>
                         <TableCell>
