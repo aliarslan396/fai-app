@@ -4,8 +4,9 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
-  Package, Plus, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, FileText,
+  Package, Plus, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, FileText, Upload,
 } from "lucide-react"
+import { CsvImportDialog } from "@/components/csv-import-dialog"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -63,6 +64,7 @@ export default function PartsPage() {
   const { hasPermission } = useAuthStore()
 
   const [parts, setParts] = useState<Part[]>([])
+  const [importOpen, setImportOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
@@ -143,12 +145,25 @@ export default function PartsPage() {
           </p>
         </div>
         {canCreate && (
-          <Button onClick={openAdd}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add part
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />
+              Import CSV
+            </Button>
+            <Button onClick={openAdd}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add part
+            </Button>
+          </div>
         )}
       </div>
+
+      <CsvImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        kind="parts"
+        onDone={() => { void fetchParts(); }}
+      />
 
       <Card>
         <CardHeader>

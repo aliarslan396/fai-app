@@ -6,6 +6,7 @@ use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\BalloonController;
 use App\Http\Controllers\Tenant\CapaController;
 use App\Http\Controllers\Tenant\CharacteristicController;
+use App\Http\Controllers\Tenant\CsvImportController;
 use App\Http\Controllers\Tenant\ExportController;
 use App\Http\Controllers\Tenant\GaugeController;
 use App\Http\Controllers\Tenant\SignatureController;
@@ -130,6 +131,9 @@ Route::prefix('api/v1')
             // Parts (minimal CRUD for Week 5 — full module in Week 9)
             Route::prefix('parts')->group(function () {
                 Route::get('/', [PartController::class, 'index']);
+                Route::get('import/template', [CsvImportController::class, 'partsTemplate']);
+                Route::post('import/preview', [CsvImportController::class, 'previewParts']);
+                Route::post('import/commit', [CsvImportController::class, 'commitParts']);
                 Route::post('/', [PartController::class, 'store']);
                 Route::get('{id}', [PartController::class, 'show']);
                 Route::patch('{id}', [PartController::class, 'update']);
@@ -139,6 +143,9 @@ Route::prefix('api/v1')
             // Inspection Plans (per doc Module 3.2 / 4.2)
             Route::prefix('plans')->group(function () {
                 Route::get('/', [InspectionPlanController::class, 'index']);
+                Route::get('import/template', [CsvImportController::class, 'plansTemplate']);
+                Route::post('import/preview', [CsvImportController::class, 'previewPlans']);
+                Route::post('import/commit', [CsvImportController::class, 'commitPlans']);
                 Route::post('/', [InspectionPlanController::class, 'store']);
                 Route::get('{id}', [InspectionPlanController::class, 'show']);
                 Route::patch('{id}', [InspectionPlanController::class, 'update']);

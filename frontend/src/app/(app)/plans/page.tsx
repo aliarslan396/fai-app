@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import {
-  ClipboardList, Search, Loader2, ChevronLeft, ChevronRight,
+  ClipboardList, Search, Loader2, ChevronLeft, ChevronRight, Upload,
 } from "lucide-react"
+import { CsvImportDialog } from "@/components/csv-import-dialog"
+import { useAuthStore } from "@/lib/auth-store"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -44,7 +46,10 @@ const statusVariant: Record<string, "default" | "secondary" | "outline"> = {
 }
 
 export default function PlansListPage() {
+  const { hasPermission } = useAuthStore()
+  const canCreate = hasPermission("plans.create")
   const [plans, setPlans] = useState<PlanRow[]>([])
+  const [importOpen, setImportOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -93,12 +98,27 @@ export default function PlansListPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Inspection Plans</h1>
-        <p className="text-sm text-muted-foreground">
-          Bubble prints across all parts — open one to add balloons or use it for inspections
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Inspection Plans</h1>
+          <p className="text-sm text-muted-foreground">
+            Bubble prints across all parts — open one to add balloons or use it for inspections
+          </p>
+        </div>
+        {canCreate && (
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            Import CSV
+          </Button>
+        )}
       </div>
+
+      <CsvImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        kind="plans"
+        onDone={() => { void fetchPlans(page); }}
+      />
 
       <Card>
         <CardHeader>
