@@ -26,8 +26,10 @@ const tenantNav = [
   { label: "Parts", href: "/parts", icon: Package, permission: "parts.view" },
   { label: "Customers", href: "/customers", icon: Building2, permission: "customers.view" },
   { label: "Inspection Plans", href: "/plans", icon: FileText, permission: "plans.view" },
-  { label: "Inspections", href: "/inspections", icon: Stamp, permission: "inspections.view" },
-  { label: "NCR / CAPA", href: "/ncr", icon: AlertTriangle, permission: "ncr.view" },
+  // /workflow/* is Steps 1-3 of a new inspection — same nav slot.
+  { label: "Inspections", href: "/inspections", icon: Stamp, permission: "inspections.view", matchPrefixes: ["/inspections", "/workflow"] },
+  // CAPA lives under its own URL space but is the same nav item.
+  { label: "NCR / CAPA", href: "/ncr", icon: AlertTriangle, permission: "ncr.view", matchPrefixes: ["/ncr", "/capa"] },
   { label: "Gauges", href: "/gauges", icon: Wrench, permission: "gauges.view" },
   { label: "Reports", href: "/reports", icon: BarChart3, permission: "reports.view" },
 ]
@@ -83,7 +85,8 @@ export function AppSidebar() {
         </div>
         {nav.map((item) => {
           const Icon = item.icon
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+          const prefixes = (item as { matchPrefixes?: string[] }).matchPrefixes ?? [item.href]
+          const isActive = prefixes.some((p) => pathname === p || pathname.startsWith(p + "/"))
           return (
             <Link
               key={item.href}
@@ -108,7 +111,8 @@ export function AppSidebar() {
             </div>
             {adminNav.map((item) => {
               const Icon = item.icon
-              const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+              const prefixes = (item as { matchPrefixes?: string[] }).matchPrefixes ?? [item.href]
+          const isActive = prefixes.some((p) => pathname === p || pathname.startsWith(p + "/"))
               return (
                 <Link
                   key={item.href}
