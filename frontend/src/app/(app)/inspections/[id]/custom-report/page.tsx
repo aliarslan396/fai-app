@@ -299,6 +299,34 @@ export default function CustomReportPage() {
     }
   }
 
+  const [statusBusy, setStatusBusy] = useState(false)
+  const handleMarkComplete = async () => {
+    if (!report) return
+    setStatusBusy(true)
+    try {
+      await api.post(`/custom-reports/${report.id}/complete`)
+      toast.success("Report marked complete — ready for signature")
+      fetchAll()
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not mark complete"))
+    } finally {
+      setStatusBusy(false)
+    }
+  }
+  const handleReopenToDraft = async () => {
+    if (!report) return
+    setStatusBusy(true)
+    try {
+      await api.post(`/custom-reports/${report.id}/reopen-to-draft`)
+      toast.success("Report reopened to draft")
+      fetchAll()
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not reopen"))
+    } finally {
+      setStatusBusy(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -341,9 +369,17 @@ export default function CustomReportPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{report.template.header_title}</h1>
-          <p className="text-sm text-muted-foreground">
-            {report.template.doc_number} Rev {report.template.revision} · IR <span className="font-mono">{report.ir_number}</span>
-            {report.locked && <Badge variant="secondary" className="ml-2">SIGNED · LOCKED</Badge>}
+          <p className="text-sm text-muted-foreground flex flex-wrap items-center gap-2">
+            <span>{report.template.doc_number} Rev {report.template.revision} · IR <span className="font-mono">{report.ir_number}</span></span>
+            {report.status === "draft" && (
+              <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">DRAFT</Badge>
+            )}
+            {report.status === "complete" && (
+              <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-800">COMPLETE · awaiting signature</Badge>
+            )}
+            {report.status === "signed" && (
+              <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800">SIGNED · LOCKED</Badge>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -364,13 +400,39 @@ export default function CustomReportPage() {
             {syncing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
             Sync from plan
           </Button>
+          {/* Draft → Complete → Signed lifecycle (doc 3.5) */}
+          {report.status === "draft" && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!summary.all_done || statusBusy}
+              onClick={handleMarkComplete}
+              title={summary.all_done ? "Mark this report ready for QA sign-off" : `${summary.not_measured} more to measure`}
+            >
+              {statusBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1 h-3.5 w-3.5" />}
+              {summary.all_done ? "Mark Complete" : `${summary.not_measured} more to measure`}
+            </Button>
+          )}
+          {report.status === "complete" && (
+            <Button variant="outline" size="sm" disabled={statusBusy} onClick={handleReopenToDraft}>
+              {statusBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <ArrowLeft className="mr-1 h-3.5 w-3.5" />}
+              Reopen to Draft
+            </Button>
+          )}
           {canSign && (
           <Button
             size="sm"
-            disabled={!summary.all_done || report.locked}
+            disabled={report.status !== "complete" || report.locked}
             onClick={() => setSignDialogOpen(true)}
+            title={
+              report.status === "signed"
+                ? "Already signed"
+                : report.status === "complete"
+                  ? "Sign and lock the report"
+                  : "Mark the report complete first"
+            }
           >
-            {report.locked ? (
+            {report.status === "signed" || report.locked ? (
               <>
                 <Lock className="mr-1 h-3.5 w-3.5" />
                 Signed
@@ -378,9 +440,7 @@ export default function CustomReportPage() {
             ) : (
               <>
                 <PenLine className="mr-1 h-3.5 w-3.5" />
-                {summary.all_done
-                  ? "Sign & Lock"
-                  : `${summary.not_measured} more to measure`}
+                {report.status === "complete" ? "Sign & Lock" : "Sign & Lock"}
               </>
             )}
           </Button>

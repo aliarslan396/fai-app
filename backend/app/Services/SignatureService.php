@@ -63,6 +63,11 @@ class SignatureService
         if ($signable instanceof FaiForm1 && ! in_array($signable->status, ['submitted', 'accepted'], true)) {
             throw new RuntimeException("Cannot sign — form must be submitted for review first. Current status: {$signable->status}");
         }
+        // Doc 3.5: Custom Report must reach Complete before it can be signed.
+        if ($signable instanceof \App\Models\CustomInspectionReport
+            && ! in_array($signable->status, ['complete', 'signed'], true)) {
+            throw new RuntimeException("Cannot sign — report must be marked complete first. Current status: {$signable->status}");
+        }
 
         if (! Hash::check($password, $user->password)) {
             throw new RuntimeException('Password verification failed');
@@ -110,6 +115,11 @@ class SignatureService
                 // `accepted`. Signature is the ONLY path to acceptance.
                 if ($signable instanceof FaiForm1) {
                     $this->faiStatus->markAcceptedFromSign($signable);
+                }
+                // Doc 3.5: signing the Custom Report transitions status
+                // to `signed`. Signature is the ONLY path.
+                if ($signable instanceof \App\Models\CustomInspectionReport) {
+                    app(\App\Services\CustomReportStatusService::class)->markSignedFromSign($signable);
                 }
             }
 

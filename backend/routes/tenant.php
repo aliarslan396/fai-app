@@ -225,6 +225,11 @@ Route::prefix('api/v1')
                 Route::patch('{id}/rows/{row_id}', [CustomReportController::class, 'updateRow']);
                 Route::post('{id}/sync-from-plan', [CustomReportController::class, 'syncFromPlan']);
                 Route::post('{id}/import-from-fai', [CustomReportController::class, 'importFromFai']);
+
+                // Draft → Complete → Signed lifecycle (doc 3.5)
+                Route::post('{id}/complete', [CustomReportController::class, 'markComplete']);
+                Route::post('{id}/reopen-to-draft', [CustomReportController::class, 'reopenToDraft']);
+                Route::post('{id}/reopen-signed', [CustomReportController::class, 'reopenSigned']);
             });
 
             // Signatures (Module 4.6 — Week 13)

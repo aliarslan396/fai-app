@@ -9,12 +9,14 @@ use App\Models\CustomReportCharacteristic;
 use App\Models\CustomReportTemplate;
 use App\Models\FaiCharacteristic;
 use App\Models\InspectionSession;
+use App\Services\CustomReportStatusService;
 use App\Services\CustomReportSyncEngine;
 use App\Services\PassFailEvaluator;
 use App\Services\ReportNumberService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class CustomReportController extends Controller
 {
@@ -22,7 +24,49 @@ class CustomReportController extends Controller
         private ReportNumberService $numbers,
         private CustomReportSyncEngine $sync,
         private PassFailEvaluator $eval,
+        private CustomReportStatusService $status,
     ) {}
+
+    // -------------------------------------------------------- lifecycle
+
+    public function markComplete(Request $request, int $id): JsonResponse
+    {
+        $report = CustomInspectionReport::findOrFail($id);
+        try {
+            $report = $this->status->markComplete($request->user(), $report);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        return response()->json(['report' => $report]);
+    }
+
+    public function reopenToDraft(Request $request, int $id): JsonResponse
+    {
+        $report = CustomInspectionReport::findOrFail($id);
+        try {
+            $report = $this->status->reopenToDraft($request->user(), $report);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        return response()->json(['report' => $report]);
+    }
+
+    public function reopenSigned(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user->hasRole('admin')) {
+            abort(403, 'Only admins can reopen a signed report.');
+        }
+
+        $data = $request->validate(['reason' => 'required|string|min:5|max:500']);
+        $report = CustomInspectionReport::findOrFail($id);
+        try {
+            $report = $this->status->reopenSigned($user, $report, $data['reason']);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        return response()->json(['report' => $report]);
+    }
 
     /**
      * Auto-create (or fetch) the DEF-QA-003 report for a session that picked
