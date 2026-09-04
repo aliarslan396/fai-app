@@ -21,6 +21,7 @@ use App\Http\Controllers\Tenant\InspectionPlanController;
 use App\Http\Controllers\Tenant\InspectionSessionController;
 use App\Http\Controllers\Tenant\NcrController;
 use App\Http\Controllers\Tenant\PartController;
+use App\Http\Controllers\Tenant\ReportsController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use App\Http\Controllers\Tenant\TenantSettingsController;
 use App\Http\Controllers\Tenant\UserController;
@@ -303,6 +304,21 @@ Route::prefix('api/v1')
                 // Tab 5 — Effectiveness review + close
                 Route::post('{id}/effectiveness/schedule', [CapaController::class, 'scheduleEffectiveness']);
                 Route::post('{id}/close', [CapaController::class, 'close']);
+            });
+
+            // KoolReport suite (doc §4.8 / §3.11) — Sprint 3
+            Route::prefix('reports')->group(function () {
+                Route::get('ncr-pareto', [ReportsController::class, 'ncrParetoData']);
+                Route::get('ncr-pareto/pdf', [ReportsController::class, 'ncrParetoPdf']);
+                Route::get('capa-summary', [ReportsController::class, 'capaSummaryData']);
+                Route::get('capa-summary/pdf', [ReportsController::class, 'capaSummaryPdf']);
+                Route::get('gauge-compliance', [ReportsController::class, 'gaugeComplianceData']);
+                Route::get('gauge-compliance/pdf', [ReportsController::class, 'gaugeCompliancePdf']);
+                Route::get('fai-status', [ReportsController::class, 'faiStatusData']);
+                Route::get('fai-status/pdf', [ReportsController::class, 'faiStatusPdf']);
+                Route::get('management-review', [ReportsController::class, 'managementReviewData']);
+                Route::get('management-review/pdf', [ReportsController::class, 'managementReviewPdf']);
+                Route::get('dashboard-tiles', [ReportsController::class, 'dashboardTiles']);
             });
 
             // Exports (Module 5 — Week 14). Bodies stubbed until Day 2-5.

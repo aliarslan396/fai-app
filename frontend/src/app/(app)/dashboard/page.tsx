@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/empty-state"
 import { RepeatDefectsWidget } from "@/components/ncr/repeat-defects-widget"
+import { DashboardChartTiles } from "@/components/reports/dashboard-tiles"
 import { useAuthStore } from "@/lib/auth-store"
 import api from "@/lib/api"
 
@@ -321,6 +322,9 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Chart tiles per doc §4.8 — CAPA on-time / gauge compliance / FAI 1st-pass + 3 mini charts */}
+      {hasPermission("reports.view") && <DashboardChartTiles />}
 
       {/* Repeat Defects — QM view of recurring part+defect clusters */}
       {hasPermission("ncr.view") && <RepeatDefectsWidget />}
