@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import {
   ArrowLeft, MousePointer, Crosshair, ListOrdered, Upload, Loader2, X, FileText,
@@ -76,8 +76,19 @@ type Mode = "view" | "place"
 export default function PlanWorkspacePage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { hasPermission } = useAuthStore()
   const canEdit = hasPermission("plans.edit")
+
+  // Doc 5.4.14: Form 3 links here as `?balloon=N` — after balloons load,
+  // auto-select that one so its characteristic panel opens. Only handles
+  // the first arrival; a manual click on another balloon takes precedence.
+  const initialBalloonNumber = (() => {
+    const raw = searchParams?.get("balloon")
+    const n = raw ? Number(raw) : NaN
+    return Number.isFinite(n) ? n : null
+  })()
+  const [initialSelectionDone, setInitialSelectionDone] = useState(false)
 
   const [plan, setPlan] = useState<Plan | null>(null)
   const [balloons, setBalloons] = useState<Balloon[]>([])
@@ -119,7 +130,23 @@ export default function PlanWorkspacePage() {
       ])
       const p: Plan = planRes.data.plan
       setPlan(p)
-      setBalloons(balloonRes.data.balloons || [])
+      const loadedBalloons: Balloon[] = balloonRes.data.balloons || []
+      setBalloons(loadedBalloons)
+
+      // Doc 5.4.14: honor ?balloon=N by switching to the balloon's
+      // doc + page and opening its characteristic panel. Only fires
+      // once — subsequent refetches don't override the user's manual
+      // navigation.
+      if (initialBalloonNumber && ! initialSelectionDone) {
+        const match = loadedBalloons.find((b) => b.balloon_number === initialBalloonNumber)
+        if (match) {
+          setActiveDocId(match.fai_document_id)
+          setActivePage(match.page_number)
+          setSelectedBalloon(match)
+          setInitialSelectionDone(true)
+        }
+      }
+
       if (!activeDocId && p.documents?.length) {
         setActiveDocId(p.documents[0].id)
       }
@@ -221,6 +248,129 @@ export default function PlanWorkspacePage() {
   const handleBalloonClick = (b: Balloon) => {
     if (mode !== "view") return
     setSelectedBalloon(b)
+  }
+
+  // ---------- Drag-to-reposition (doc §3.2 / §5.2.9) ----------
+  // 300ms hold or 5px movement enters drag mode; the pointer is captured
+  // synchronously on pointerdown so events keep flowing even when the
+  // pointer leaves the small balloon circle mid-drag. On release, PATCH
+  // saves; on error, position reverts.
+  const HOLD_MS = 300
+  const MOVE_THRESHOLD_PX = 5
+  const dragStateRef = useRef<{
+    balloonId: number
+    startX: number
+    startY: number
+    startTime: number
+    origX: number
+    origY: number
+    dragging: boolean
+    containerEl: HTMLElement | null
+  } | null>(null)
+  const [draggingId, setDraggingId] = useState<number | null>(null)
+
+  function activateDragIfNeeded() {
+    const s = dragStateRef.current
+    if (!s || s.dragging) return
+    s.dragging = true
+    setDraggingId(s.balloonId)
+  }
+
+  function balloonPointerDown(e: React.PointerEvent, b: Balloon) {
+    if (mode !== "view" || !canEdit) return
+    if (e.button !== 0 && e.pointerType === "mouse") return
+    e.stopPropagation()
+
+    // Capture pointer synchronously so pointer-move/up keep firing on this
+    // element even when the pointer leaves the balloon's 28px hit area.
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    } catch {}
+
+    dragStateRef.current = {
+      balloonId: b.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      startTime: performance.now(),
+      origX: Number(b.x_pct),
+      origY: Number(b.y_pct),
+      dragging: false,
+      containerEl: (e.currentTarget as HTMLElement).parentElement,
+    }
+
+    // Hold-timer path — user holds still, drag arms after 300ms
+    window.setTimeout(() => {
+      if (dragStateRef.current?.balloonId === b.id) activateDragIfNeeded()
+    }, HOLD_MS)
+  }
+
+  function balloonPointerMove(e: React.PointerEvent) {
+    const s = dragStateRef.current
+    if (!s) return
+
+    // Movement path — if user moves >5px OR held >300ms, drag arms
+    if (!s.dragging) {
+      const dx = e.clientX - s.startX
+      const dy = e.clientY - s.startY
+      const dist = Math.hypot(dx, dy)
+      const elapsed = performance.now() - s.startTime
+      if (dist < MOVE_THRESHOLD_PX && elapsed < HOLD_MS) return
+      activateDragIfNeeded()
+    }
+
+    if (!s.containerEl) return
+    const rect = s.containerEl.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
+    const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100))
+    const yPct = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100))
+
+    setBalloons((prev) =>
+      prev.map((b) => (b.id === s.balloonId ? { ...b, x_pct: xPct, y_pct: yPct } : b))
+    )
+  }
+
+  async function balloonPointerUp(e: React.PointerEvent) {
+    const s = dragStateRef.current
+    if (!s) return
+
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+    } catch {}
+
+    if (!s.dragging) {
+      dragStateRef.current = null
+      return
+    }
+
+    const balloon = balloons.find((b) => b.id === s.balloonId)
+    dragStateRef.current = null
+    setDraggingId(null)
+    if (!balloon) return
+
+    try {
+      await api.patch(`/plans/${params.id}/balloons/${balloon.id}`, {
+        x_pct: Number(balloon.x_pct),
+        y_pct: Number(balloon.y_pct),
+      })
+      toast.success(`Bubble #${balloon.balloon_number} repositioned`)
+    } catch (err) {
+      setBalloons((prev) =>
+        prev.map((b) => (b.id === s.balloonId ? { ...b, x_pct: s.origX, y_pct: s.origY } : b))
+      )
+      toast.error(getErrorMessage(err, "Failed to save new position"))
+    }
+  }
+
+  function balloonPointerCancel() {
+    const s = dragStateRef.current
+    if (!s) return
+    if (s.dragging) {
+      setBalloons((prev) =>
+        prev.map((b) => (b.id === s.balloonId ? { ...b, x_pct: s.origX, y_pct: s.origY } : b))
+      )
+      setDraggingId(null)
+    }
+    dragStateRef.current = null
   }
 
   const handleCharacteristicSaved = (char: Characteristic) => {
@@ -576,15 +726,24 @@ export default function PlanWorkspacePage() {
                   const yPx = (Number(b.y_pct) / 100) * pageDims.height
                   const isSelected = selectedBalloon?.id === b.id
                   const isOcr = b.source === "ocr"
+                  const isDragging = draggingId === b.id
                   return (
                     <div
                       key={b.id}
                       onClick={(e) => {
+                        // Suppress synthetic click if we just finished a drag
+                        if (isDragging || dragStateRef.current?.dragging) return
                         e.stopPropagation()
                         handleBalloonClick(b)
                       }}
-                      className={`absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-2 text-xs font-bold text-white ${
-                        isSelected
+                      onPointerDown={(e) => balloonPointerDown(e, b)}
+                      onPointerMove={balloonPointerMove}
+                      onPointerUp={balloonPointerUp}
+                      onPointerCancel={balloonPointerCancel}
+                      className={`absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-xs font-bold text-white touch-none select-none ${
+                        isDragging ? "cursor-grabbing shadow-lg ring-2 ring-blue-400" : "cursor-grab"
+                      } ${
+                        isSelected && ! isDragging
                           ? "animate-pulse border-[3px] border-blue-500 ring-2 ring-blue-300"
                           : ""
                       } ${
@@ -593,7 +752,7 @@ export default function PlanWorkspacePage() {
                           : "border-red-700 bg-red-600"
                       }`}
                       style={{ left: `${xPx}px`, top: `${yPx}px` }}
-                      title={`Bubble #${b.balloon_number}${b.characteristic?.requirement_string ? ` — ${b.characteristic.requirement_string}` : ""}`}
+                      title={`Bubble #${b.balloon_number}${b.characteristic?.requirement_string ? ` — ${b.characteristic.requirement_string}` : ""}. Hold 300ms then drag to reposition.`}
                     >
                       {b.balloon_number}
                     </div>

@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
-  ArrowLeft, RefreshCw, Loader2, ExternalLink, AlertTriangle,
+  ArrowLeft, RefreshCw, Loader2, ExternalLink, AlertTriangle, Pencil,
   CheckCircle2, Circle, XCircle, PenLine, Lock, Plus,
 } from "lucide-react"
 
@@ -469,19 +469,19 @@ export default function Form3Page() {
                         <TableCell className="font-mono text-xs">
                           <div className="flex items-center gap-1">
                             <span>{row.field8_requirement || row.characteristic?.requirement_string || "—"}</span>
-                            <Link
-                              href={`/plans/${row.characteristic ? "" : ""}`}
+                            {/* Doc 5.4.14: pencil jumps to drawing workspace at this balloon */}
+                            <button
+                              type="button"
                               className="text-muted-foreground opacity-50 hover:opacity-100"
-                              title="Edit balloon in plan workspace"
-                              onClick={(ev) => {
-                                ev.preventDefault()
+                              title={`Edit balloon #${row.balloon_number} in the drawing workspace`}
+                              onClick={() => {
                                 if (session.plan) {
-                                  router.push(`/plans/${session.plan.id}/workspace`)
+                                  router.push(`/plans/${session.plan.id}/workspace?balloon=${row.balloon_number}`)
                                 }
                               }}
                             >
-                              <ExternalLink className="h-3 w-3" />
-                            </Link>
+                              <Pencil className="h-3 w-3" />
+                            </button>
                           </div>
                         </TableCell>
                         <TableCell>
