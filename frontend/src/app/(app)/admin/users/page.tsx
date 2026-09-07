@@ -77,6 +77,7 @@ export default function AdminUsersPage() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<User | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -145,8 +146,16 @@ export default function AdminUsersPage() {
 
   const bulkAction = async (action: "disable" | "enable" | "delete") => {
     if (selectedIds.size === 0) return
-    if (action === "delete" && !confirm(`Permanently delete ${selectedIds.size} users? This cannot be undone.`)) return
+    // Delete is destructive — route through the themed AlertDialog
+    // instead of the native browser confirm (per design bar).
+    if (action === "delete") {
+      setBulkDeleteConfirm(true)
+      return
+    }
+    await runBulkAction(action)
+  }
 
+  const runBulkAction = async (action: "disable" | "enable" | "delete") => {
     setBulkBusy(true)
     try {
       const { data } = await api.post("/users/bulk", {
@@ -468,6 +477,32 @@ export default function AdminUsersPage() {
                   Delete user
                 </>
               )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkDeleteConfirm} onOpenChange={setBulkDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.size} user{selectedIds.size !== 1 ? "s" : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Permanent deletion of {selectedIds.size} account{selectedIds.size !== 1 ? "s" : ""}.
+              Their inspection + audit history stays intact, but the account cannot log in
+              again. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setBulkDeleteConfirm(false)
+                await runBulkAction("delete")
+              }}
+              disabled={bulkBusy}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkBusy ? "Deleting..." : `Delete ${selectedIds.size}`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -68,6 +68,7 @@ export default function CustomersPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Customer | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null)
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -133,9 +134,16 @@ export default function CustomersPage() {
 
   const bulkAction = async (action: "activate" | "deactivate" | "delete") => {
     if (selectedIds.size === 0) return
-    if (action === "delete" && !confirm(`Delete ${selectedIds.size} customer(s)? Linked parts will block deletion.`)) {
+    // Delete is destructive — route through the themed AlertDialog
+    // instead of the native browser confirm (per design bar).
+    if (action === "delete") {
+      setBulkDeleteConfirm(true)
       return
     }
+    await runBulkAction(action)
+  }
+
+  const runBulkAction = async (action: "activate" | "deactivate" | "delete") => {
     setBulkBusy(true)
     try {
       const { data } = await api.post("/customers/bulk", {
@@ -435,6 +443,31 @@ export default function CustomersPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkDeleteConfirm} onOpenChange={setBulkDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.size} customer{selectedIds.size !== 1 ? "s" : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Any customer with linked parts will block deletion — the rest will still be
+              removed. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setBulkDeleteConfirm(false)
+                await runBulkAction("delete")
+              }}
+              disabled={bulkBusy}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkBusy ? "Deleting..." : `Delete ${selectedIds.size}`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
