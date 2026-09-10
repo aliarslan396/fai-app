@@ -292,7 +292,7 @@ export default function Form3Page() {
             {session.part && `${session.part.part_number} Rev ${session.part.revision} · `}
             FAI <span className="font-mono">{data.form1.fai_number}</span>
             {data.form1.locked && (
-              <Badge variant="secondary" className="ml-2">LOCKED</Badge>
+              <Badge variant="outline" className="ml-2 border-emerald-300 bg-emerald-50 text-emerald-800">SIGNED · LOCKED</Badge>
             )}
           </p>
           <FaiStatusControls

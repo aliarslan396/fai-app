@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\CustomInspectionReport;
+use App\Models\ExportLog;
 use App\Models\FaiForm1;
 use App\Services\Export\ExportNotImplementedException;
 use App\Services\ExportService;
@@ -28,49 +29,58 @@ class ExportController extends Controller
 
     public function as9102Excel(Request $request, int $formId): Response|BinaryFileResponse
     {
-        return $this->stream(function () use ($request, $formId) {
+        return $this->stream($request, function () use ($request, $formId) {
             $form = FaiForm1::findOrFail($formId);
 
             return [
                 $this->service->exportAs9102Excel($form, $request->user()),
                 $this->as9102ExcelFilename($form),
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                FaiForm1::class,
+                $form->id,
+                ExportLog::FORMAT_EXCEL,
             ];
         });
     }
 
     public function as9102Pdf(Request $request, int $formId): Response|BinaryFileResponse
     {
-        return $this->stream(function () use ($request, $formId) {
+        return $this->stream($request, function () use ($request, $formId) {
             $form = FaiForm1::findOrFail($formId);
 
             return [
                 $this->service->exportAs9102Pdf($form, $request->user()),
                 $this->as9102PdfFilename($form),
                 'application/pdf',
+                FaiForm1::class,
+                $form->id,
+                ExportLog::FORMAT_PDF,
             ];
         });
     }
 
     public function customReportPdf(Request $request, int $reportId): Response|BinaryFileResponse
     {
-        return $this->stream(function () use ($request, $reportId) {
+        return $this->stream($request, function () use ($request, $reportId) {
             $report = CustomInspectionReport::findOrFail($reportId);
 
             return [
                 $this->service->exportCustomReportPdf($report, $request->user()),
                 $this->customReportFilename($report),
                 'application/pdf',
+                CustomInspectionReport::class,
+                $report->id,
+                ExportLog::FORMAT_PDF,
             ];
         });
     }
 
-    private function stream(callable $build): Response|BinaryFileResponse
+    private function stream(Request $request, callable $build): Response|BinaryFileResponse
     {
         $this->checkPermission('inspections.export');
 
         try {
-            [$relative, $downloadName, $mime] = $build();
+            [$relative, $downloadName, $mime, $subjectType, $subjectId, $format] = $build();
         } catch (ExportNotImplementedException $e) {
             abort(501, $e->getMessage());
         }
@@ -79,6 +89,23 @@ class ExportController extends Controller
         if (! file_exists($path)) {
             abort(404, 'Export file missing after generation.');
         }
+
+        // Doc §5.6.12 — write an immutable audit-trail row for every
+        // download so AS9100 auditors + the shop can answer "who
+        // downloaded which report when."
+        $user = $request->user();
+        ExportLog::create([
+            'subject_type' => $subjectType,
+            'subject_id' => $subjectId,
+            'format' => $format,
+            'file_name' => $downloadName,
+            'file_size_bytes' => filesize($path) ?: null,
+            'exported_by' => $user->id,
+            'exported_by_name' => $user->name,
+            'ip_address' => $request->ip(),
+            'user_agent' => substr((string) $request->userAgent(), 0, 500),
+            'exported_at' => now(),
+        ]);
 
         return response()->download($path, $downloadName, [
             'Content-Type' => $mime,
