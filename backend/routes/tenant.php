@@ -22,6 +22,7 @@ use App\Http\Controllers\Tenant\InspectionSessionController;
 use App\Http\Controllers\Tenant\NcrController;
 use App\Http\Controllers\Tenant\PartController;
 use App\Http\Controllers\Tenant\ReportsController;
+use App\Http\Controllers\Tenant\RolesController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use App\Http\Controllers\Tenant\TenantSettingsController;
 use App\Http\Controllers\Tenant\UserController;
@@ -106,6 +107,12 @@ Route::prefix('api/v1')
 
             // Audit log
             Route::get('audit-logs', [AuditLogController::class, 'index']);
+
+            // Roles + permissions matrix (doc §3 / Timothy Aug 26 request)
+            Route::prefix('admin/roles')->group(function () {
+                Route::get('/', [RolesController::class, 'index']);
+                Route::patch('{id}/permissions', [RolesController::class, 'updatePermissions']);
+            });
 
             // User management
             Route::prefix('users')->group(function () {

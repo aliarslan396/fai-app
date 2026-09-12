@@ -15,6 +15,7 @@ import {
   Building2,
   Activity,
   CreditCard,
+  ShieldCheck,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -36,6 +37,7 @@ const tenantNav = [
 
 const tenantAdminNav = [
   { label: "Users", href: "/admin/users", icon: Users, permission: "users.view" },
+  { label: "Roles", href: "/admin/roles", icon: ShieldCheck, permission: "users.edit" },
   { label: "Activity Log", href: "/admin/audit", icon: Activity, permission: "users.view" },
   { label: "Settings", href: "/admin/settings", icon: Settings, permission: "tenant.settings" },
 ]
