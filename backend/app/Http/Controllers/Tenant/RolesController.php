@@ -30,7 +30,7 @@ class RolesController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $this->checkPermission('users.edit');
+        $this->requireAdmin();
 
         $roles = Role::with('permissions:id,name')->orderBy('name')->get()
             ->map(fn ($r) => [
@@ -51,7 +51,7 @@ class RolesController extends Controller
 
     public function updatePermissions(Request $request, int $roleId): JsonResponse
     {
-        $this->checkPermission('users.edit');
+        $this->requireAdmin();
 
         $data = $request->validate([
             'permission_names' => 'required|array',
@@ -121,6 +121,19 @@ class RolesController extends Controller
         $user = request()->user();
         if (! $user || ! $user->hasPermissionTo($permission)) {
             abort(403, "Missing permission: {$permission}");
+        }
+    }
+
+    /**
+     * Role editing is admin-only per doc §7.3 role matrix. Users with
+     * users.edit alone (e.g. qa_manager) can still manage USERS but
+     * must not be able to modify what any role is allowed to do.
+     */
+    private function requireAdmin(): void
+    {
+        $user = request()->user();
+        if (! $user || ! $user->hasRole('admin')) {
+            abort(403, 'Only admins can view or change role permissions.');
         }
     }
 }

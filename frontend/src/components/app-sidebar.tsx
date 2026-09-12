@@ -37,7 +37,7 @@ const tenantNav = [
 
 const tenantAdminNav = [
   { label: "Users", href: "/admin/users", icon: Users, permission: "users.view" },
-  { label: "Roles", href: "/admin/roles", icon: ShieldCheck, permission: "users.edit" },
+  { label: "Roles", href: "/admin/roles", icon: ShieldCheck, requiresRole: "admin" },
   { label: "Activity Log", href: "/admin/audit", icon: Activity, permission: "users.view" },
   { label: "Settings", href: "/admin/settings", icon: Settings, permission: "tenant.settings" },
 ]
@@ -51,11 +51,19 @@ const masterNav = [
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { user, context, tenant, hasPermission } = useAuthStore()
+  const { user, context, tenant, hasPermission, hasRole } = useAuthStore()
 
   const isMaster = context === "master"
   const nav = isMaster ? masterNav : tenantNav.filter((item) => !item.permission || hasPermission(item.permission))
-  const adminNav = isMaster ? [] : tenantAdminNav.filter((item) => !item.permission || hasPermission(item.permission))
+  // Admin nav respects both permission gate AND (optional) hard role gate — role-permission
+  // management is admin-only per doc §7.3, so we hide the Roles link from qa_manager entirely.
+  const adminNav = isMaster
+    ? []
+    : tenantAdminNav.filter((item) => {
+        const permOk = !("permission" in item) || !item.permission || hasPermission(item.permission)
+        const roleOk = !("requiresRole" in item) || !item.requiresRole || hasRole(item.requiresRole)
+        return permOk && roleOk
+      })
 
   return (
     <aside className="hidden w-64 shrink-0 border-r bg-sidebar text-sidebar-foreground md:flex md:flex-col">
