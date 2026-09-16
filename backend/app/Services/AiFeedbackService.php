@@ -10,10 +10,10 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * AI feedback loop — records every user correction to an AI-detected
- * balloon (source=ocr). Feeds the weekly CSV export used to tune the
+ * balloon (source=ai). Feeds the weekly CSV export used to tune the
  * Ollama/Mistral prompt.
  *
- * Only balloons with source='ocr' generate corrections. User-placed
+ * Only balloons with source='ai' generate corrections. User-placed
  * (source='manual') edits are not logged — a manual placement being
  * corrected teaches the AI nothing.
  */
@@ -27,7 +27,7 @@ class AiFeedbackService
         float $originalXPct,
         float $originalYPct,
     ): ?AiCorrection {
-        if ($balloon->source !== 'ocr') {
+        if ($balloon->source !== 'ai') {
             return null;
         }
 
@@ -43,7 +43,7 @@ class AiFeedbackService
 
     public function recordReject(TenantUser $user, DrawingBalloon $balloon): ?AiCorrection
     {
-        if ($balloon->source !== 'ocr') {
+        if ($balloon->source !== 'ai') {
             return null;
         }
 
@@ -61,7 +61,7 @@ class AiFeedbackService
         string $originalCharType,
         string $newCharType,
     ): ?AiCorrection {
-        if ($balloon->source !== 'ocr' || $originalCharType === $newCharType) {
+        if ($balloon->source !== 'ai' || $originalCharType === $newCharType) {
             return null;
         }
 

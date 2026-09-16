@@ -11,9 +11,9 @@ use Illuminate\Support\Facades\Schema;
  * prompt-tuning session) to lift accuracy over months.
  *
  * Sources of a correction:
- *   - `reposition` — user dragged an OCR balloon to a new spot
- *   - `reject` — user deleted an OCR balloon entirely
- *   - `relabel` — user changed the char_type on an OCR balloon
+ *   - `reposition` — user dragged an AI-detected balloon to a new spot
+ *   - `reject` — user deleted an AI-detected balloon entirely
+ *   - `relabel` — user changed the char_type on an AI-detected balloon
  *
  * balloon_id is nullable because a rejected balloon may have been hard-
  * deleted; the original AI guess (coords + type) is snapshotted below

@@ -54,7 +54,7 @@ class BalloonController extends Controller
             'x_pct' => 'required|numeric|min:0|max:100',
             'y_pct' => 'required|numeric|min:0|max:100',
             'char_type' => 'required|in:linear,diameter,radius,angle,gdt,surface_finish,note',
-            'source' => 'sometimes|in:manual,ocr',
+            'source' => 'sometimes|in:manual,ai',
         ]);
 
         // Verify the document belongs to this plan's parent part (a
@@ -122,7 +122,7 @@ class BalloonController extends Controller
 
         // Log AI corrections for balloons the AI originally placed.
         // Manual balloons never generate corrections.
-        if ($balloon->source === 'ocr') {
+        if ($balloon->source === 'ai') {
             $user = $request->user();
             if (isset($data['x_pct']) || isset($data['y_pct'])) {
                 $newX = (float) ($data['x_pct'] ?? $originalX);
@@ -148,7 +148,7 @@ class BalloonController extends Controller
 
         // Log AI reject correction BEFORE delete so the balloon_id
         // + coord snapshot is captured while the row still exists.
-        if ($balloon->source === 'ocr') {
+        if ($balloon->source === 'ai') {
             $this->aiFeedback->recordReject(request()->user(), $balloon);
         }
 
