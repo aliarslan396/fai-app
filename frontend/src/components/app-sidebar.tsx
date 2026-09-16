@@ -16,6 +16,7 @@ import {
   Activity,
   CreditCard,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -38,6 +39,7 @@ const tenantNav = [
 const tenantAdminNav = [
   { label: "Users", href: "/admin/users", icon: Users, permission: "users.view" },
   { label: "Roles", href: "/admin/roles", icon: ShieldCheck, requiresRole: "admin" },
+  { label: "AI Feedback", href: "/admin/ai-feedback", icon: Sparkles, requiresRole: "admin" },
   { label: "Activity Log", href: "/admin/audit", icon: Activity, permission: "users.view" },
   { label: "Settings", href: "/admin/settings", icon: Settings, permission: "tenant.settings" },
 ]

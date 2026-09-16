@@ -9,6 +9,7 @@ use App\Models\DrawingBalloon;
 use App\Models\DrawingPage;
 use App\Models\FaiCharacteristic;
 use App\Models\InspectionPlan;
+use App\Services\AiFeedbackService;
 use App\Services\OcrService;
 use App\Services\RequirementFormatter;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +21,7 @@ class BalloonController extends Controller
     public function __construct(
         private RequirementFormatter $formatter,
         private OcrService $ocr,
+        private AiFeedbackService $aiFeedback,
     ) {}
 
     public function index(Request $request, int $planId): JsonResponse
@@ -109,7 +111,30 @@ class BalloonController extends Controller
             'char_type' => 'sometimes|in:linear,diameter,radius,angle,gdt,surface_finish,note',
         ]);
 
+        // Snapshot pre-update state so the AI feedback log captures the
+        // "before" values from the AI, not the "after" that the user
+        // just corrected.
+        $originalX = (float) $balloon->x_pct;
+        $originalY = (float) $balloon->y_pct;
+        $originalCharType = (string) $balloon->char_type;
+
         $balloon->update($data);
+
+        // Log AI corrections for balloons the AI originally placed.
+        // Manual balloons never generate corrections.
+        if ($balloon->source === 'ocr') {
+            $user = $request->user();
+            if (isset($data['x_pct']) || isset($data['y_pct'])) {
+                $newX = (float) ($data['x_pct'] ?? $originalX);
+                $newY = (float) ($data['y_pct'] ?? $originalY);
+                if (abs($newX - $originalX) > 0.001 || abs($newY - $originalY) > 0.001) {
+                    $this->aiFeedback->recordReposition($user, $balloon, $newX, $newY, $originalX, $originalY);
+                }
+            }
+            if (isset($data['char_type']) && $data['char_type'] !== $originalCharType) {
+                $this->aiFeedback->recordRelabel($user, $balloon, $originalCharType, $data['char_type']);
+            }
+        }
 
         return response()->json(['balloon' => $balloon]);
     }
@@ -120,6 +145,12 @@ class BalloonController extends Controller
 
         $plan = InspectionPlan::findOrFail($planId);
         $balloon = $plan->balloons()->where('id', $balloonId)->firstOrFail();
+
+        // Log AI reject correction BEFORE delete so the balloon_id
+        // + coord snapshot is captured while the row still exists.
+        if ($balloon->source === 'ocr') {
+            $this->aiFeedback->recordReject(request()->user(), $balloon);
+        }
 
         DB::transaction(function () use ($plan, $balloon) {
             $deletedNumber = $balloon->balloon_number;

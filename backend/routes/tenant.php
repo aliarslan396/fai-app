@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Tenant\AiFeedbackController;
 use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\BalloonController;
 use App\Http\Controllers\Tenant\CapaController;
@@ -112,6 +113,12 @@ Route::prefix('api/v1')
             Route::prefix('admin/roles')->group(function () {
                 Route::get('/', [RolesController::class, 'index']);
                 Route::patch('{id}/permissions', [RolesController::class, 'updatePermissions']);
+            });
+
+            // AI feedback loop admin (Sprint 7 · Timothy Aug 26 "AI that gets better over time")
+            Route::prefix('admin/ai-feedback')->group(function () {
+                Route::get('/', [AiFeedbackController::class, 'index']);
+                Route::get('export', [AiFeedbackController::class, 'exportCsv']);
             });
 
             // User management
