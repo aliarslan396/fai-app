@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   ArrowLeft, Building2, Users, Activity, Calendar, ExternalLink,
-  Pause, Play, Trash2, AlertTriangle, Loader2,
+  Pause, Play, Trash2, AlertTriangle, Loader2, FileText, Image as ImageIcon,
+  HardDrive, UserCheck, AlertCircle, Wrench,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -53,9 +54,23 @@ interface TenantDetail {
   tenant: Tenant
   stats: {
     user_count: number
+    active_users_30d: number
     last_activity: string | null
+    plan_count: number
+    drawing_count: number
+    storage_bytes: number
+    ncr_count: number
+    capa_count: number
   }
   audit_logs: AuditEntry[]
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes) return "0 B"
+  const units = ["B", "KB", "MB", "GB", "TB"]
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const v = bytes / Math.pow(1024, i)
+  return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`
 }
 
 const statusVariants: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
@@ -214,7 +229,7 @@ export default function TenantDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={Users}
           label="Users"
@@ -222,11 +237,50 @@ export default function TenantDetailPage() {
           color="text-blue-600 bg-blue-50"
         />
         <StatCard
-          icon={Activity}
-          label="Last Login"
-          value={stats.last_activity ? new Date(stats.last_activity).toLocaleString() : "Never"}
+          icon={UserCheck}
+          label="Active (30d)"
+          value={stats.active_users_30d.toString()}
           color="text-emerald-600 bg-emerald-50"
         />
+        <StatCard
+          icon={FileText}
+          label="Inspection Plans"
+          value={stats.plan_count.toLocaleString()}
+          color="text-indigo-600 bg-indigo-50"
+        />
+        <StatCard
+          icon={ImageIcon}
+          label="Drawings"
+          value={stats.drawing_count.toLocaleString()}
+          color="text-violet-600 bg-violet-50"
+        />
+        <StatCard
+          icon={HardDrive}
+          label="Storage Used"
+          value={formatBytes(stats.storage_bytes)}
+          color="text-slate-700 bg-slate-100"
+        />
+        <StatCard
+          icon={AlertCircle}
+          label="NCRs"
+          value={stats.ncr_count.toLocaleString()}
+          color="text-rose-600 bg-rose-50"
+        />
+        <StatCard
+          icon={Wrench}
+          label="CAPAs"
+          value={stats.capa_count.toLocaleString()}
+          color="text-amber-700 bg-amber-50"
+        />
+        <StatCard
+          icon={Activity}
+          label="Last Login"
+          value={stats.last_activity ? new Date(stats.last_activity).toLocaleDateString() : "Never"}
+          color="text-teal-600 bg-teal-50"
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <StatCard
           icon={Calendar}
           label="Created"

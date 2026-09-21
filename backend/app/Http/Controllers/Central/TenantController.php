@@ -38,6 +38,29 @@ class TenantController extends Controller
         $tenants = $query->orderByDesc('created_at')
             ->paginate($request->input('per_page', 25));
 
+        // Enrich each row with a lightweight per-tenant count block so
+        // the master list can show usage without a second round-trip
+        // per row. Skipped if a tenant DB is not yet migrated.
+        $tenants->getCollection()->transform(function (Tenant $t) {
+            $counts = ['users' => 0, 'plans' => 0, 'drawings' => 0];
+            try {
+                $t->run(function () use (&$counts) {
+                    $counts['users'] = DB::table('users')->whereNull('deleted_at')->count();
+                    if (DB::getSchemaBuilder()->hasTable('inspection_plans')) {
+                        $counts['plans'] = DB::table('inspection_plans')->count();
+                    }
+                    if (DB::getSchemaBuilder()->hasTable('drawings')) {
+                        $counts['drawings'] = DB::table('drawings')->count();
+                    }
+                });
+            } catch (\Throwable $e) {
+                // half-provisioned — leave defaults
+            }
+            $arr = $t->toArray();
+            $arr['counts'] = $counts;
+            return $arr;
+        });
+
         return response()->json($tenants);
     }
 
@@ -47,16 +70,48 @@ class TenantController extends Controller
 
         $tenant = Tenant::findOrFail($id);
 
-        // Pull stats from tenant DB
-        $stats = ['user_count' => 0, 'last_activity' => null];
+        // Pull stats from tenant DB. Every counter is wrapped so a
+        // missing table on a half-provisioned tenant never 500s the
+        // detail page.
+        $stats = [
+            'user_count' => 0,
+            'active_users_30d' => 0,
+            'last_activity' => null,
+            'plan_count' => 0,
+            'drawing_count' => 0,
+            'storage_bytes' => 0,
+            'ncr_count' => 0,
+            'capa_count' => 0,
+        ];
         try {
             $tenant->run(function () use (&$stats) {
                 $stats['user_count'] = DB::table('users')->whereNull('deleted_at')->count();
+
                 $lastLogin = DB::table('audit_logs')
                     ->where('action', 'login.success')
                     ->orderByDesc('created_at')
                     ->first();
                 $stats['last_activity'] = $lastLogin?->created_at;
+
+                $stats['active_users_30d'] = DB::table('audit_logs')
+                    ->where('action', 'login.success')
+                    ->where('created_at', '>=', now()->subDays(30))
+                    ->distinct()
+                    ->count('user_id');
+
+                if (DB::getSchemaBuilder()->hasTable('inspection_plans')) {
+                    $stats['plan_count'] = DB::table('inspection_plans')->count();
+                }
+                if (DB::getSchemaBuilder()->hasTable('drawings')) {
+                    $stats['drawing_count'] = DB::table('drawings')->count();
+                    $stats['storage_bytes'] = (int) DB::table('drawings')->sum('file_size');
+                }
+                if (DB::getSchemaBuilder()->hasTable('ncrs')) {
+                    $stats['ncr_count'] = DB::table('ncrs')->count();
+                }
+                if (DB::getSchemaBuilder()->hasTable('capas')) {
+                    $stats['capa_count'] = DB::table('capas')->count();
+                }
             });
         } catch (\Throwable $e) {
             // Tenant DB not initialized — leave defaults
