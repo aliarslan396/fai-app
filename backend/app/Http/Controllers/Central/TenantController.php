@@ -8,6 +8,7 @@ use App\Models\Tenant;
 use App\Services\TenantOnboardingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -38,10 +39,27 @@ class TenantController extends Controller
         $tenants = $query->orderByDesc('created_at')
             ->paginate($request->input('per_page', 25));
 
-        // Enrich each row with a lightweight per-tenant count block so
-        // the master list can show usage without a second round-trip
-        // per row. Skipped if a tenant DB is not yet migrated.
+        // Enrich each row with a lightweight per-tenant count block.
+        // Each tenant's counts are cached for 5 minutes so the master
+        // list never re-opens N tenant DB connections on a warm hit —
+        // that was the root cause of the intermittent 502s during
+        // navigation. Cancelled tenants get zeros without any query.
         $tenants->getCollection()->transform(function (Tenant $t) {
+            $arr = $t->toArray();
+            $arr['counts'] = $this->tenantCounts($t);
+            return $arr;
+        });
+
+        return response()->json($tenants);
+    }
+
+    private function tenantCounts(Tenant $t): array
+    {
+        if ($t->status === 'cancelled') {
+            return ['users' => 0, 'plans' => 0, 'drawings' => 0];
+        }
+
+        return Cache::remember("tenant:{$t->id}:counts", now()->addMinutes(5), function () use ($t) {
             $counts = ['users' => 0, 'plans' => 0, 'drawings' => 0];
             try {
                 $t->run(function () use (&$counts) {
@@ -54,14 +72,11 @@ class TenantController extends Controller
                     }
                 });
             } catch (\Throwable $e) {
-                // half-provisioned — leave defaults
+                // half-provisioned tenant — return zeros without caching a bad value
+                return ['users' => 0, 'plans' => 0, 'drawings' => 0];
             }
-            $arr = $t->toArray();
-            $arr['counts'] = $counts;
-            return $arr;
+            return $counts;
         });
-
-        return response()->json($tenants);
     }
 
     public function show(Request $request, string $id): JsonResponse
@@ -70,52 +85,54 @@ class TenantController extends Controller
 
         $tenant = Tenant::findOrFail($id);
 
-        // Pull stats from tenant DB. Every counter is wrapped so a
-        // missing table on a half-provisioned tenant never 500s the
-        // detail page.
-        $stats = [
-            'user_count' => 0,
-            'active_users_30d' => 0,
-            'last_activity' => null,
-            'plan_count' => 0,
-            'drawing_count' => 0,
-            'storage_bytes' => 0,
-            'ncr_count' => 0,
-            'capa_count' => 0,
-        ];
-        try {
-            $tenant->run(function () use (&$stats) {
-                $stats['user_count'] = DB::table('users')->whereNull('deleted_at')->count();
+        // Detail-page stats are cached for 2 minutes so navigating in
+        // and out of a tenant does not re-open its DB every time.
+        $stats = Cache::remember("tenant:{$tenant->id}:stats", now()->addMinutes(2), function () use ($tenant) {
+            $stats = [
+                'user_count' => 0,
+                'active_users_30d' => 0,
+                'last_activity' => null,
+                'plan_count' => 0,
+                'drawing_count' => 0,
+                'storage_bytes' => 0,
+                'ncr_count' => 0,
+                'capa_count' => 0,
+            ];
+            try {
+                $tenant->run(function () use (&$stats) {
+                    $stats['user_count'] = DB::table('users')->whereNull('deleted_at')->count();
 
-                $lastLogin = DB::table('audit_logs')
-                    ->where('action', 'login.success')
-                    ->orderByDesc('created_at')
-                    ->first();
-                $stats['last_activity'] = $lastLogin?->created_at;
+                    $lastLogin = DB::table('audit_logs')
+                        ->where('action', 'login.success')
+                        ->orderByDesc('created_at')
+                        ->first();
+                    $stats['last_activity'] = $lastLogin?->created_at;
 
-                $stats['active_users_30d'] = DB::table('audit_logs')
-                    ->where('action', 'login.success')
-                    ->where('created_at', '>=', now()->subDays(30))
-                    ->distinct()
-                    ->count('user_id');
+                    $stats['active_users_30d'] = DB::table('audit_logs')
+                        ->where('action', 'login.success')
+                        ->where('created_at', '>=', now()->subDays(30))
+                        ->distinct()
+                        ->count('user_id');
 
-                if (DB::getSchemaBuilder()->hasTable('inspection_plans')) {
-                    $stats['plan_count'] = DB::table('inspection_plans')->count();
-                }
-                if (DB::getSchemaBuilder()->hasTable('drawings')) {
-                    $stats['drawing_count'] = DB::table('drawings')->count();
-                    $stats['storage_bytes'] = (int) DB::table('drawings')->sum('file_size');
-                }
-                if (DB::getSchemaBuilder()->hasTable('ncrs')) {
-                    $stats['ncr_count'] = DB::table('ncrs')->count();
-                }
-                if (DB::getSchemaBuilder()->hasTable('capas')) {
-                    $stats['capa_count'] = DB::table('capas')->count();
-                }
-            });
-        } catch (\Throwable $e) {
-            // Tenant DB not initialized — leave defaults
-        }
+                    if (DB::getSchemaBuilder()->hasTable('inspection_plans')) {
+                        $stats['plan_count'] = DB::table('inspection_plans')->count();
+                    }
+                    if (DB::getSchemaBuilder()->hasTable('drawings')) {
+                        $stats['drawing_count'] = DB::table('drawings')->count();
+                        $stats['storage_bytes'] = (int) DB::table('drawings')->sum('file_size');
+                    }
+                    if (DB::getSchemaBuilder()->hasTable('ncrs')) {
+                        $stats['ncr_count'] = DB::table('ncrs')->count();
+                    }
+                    if (DB::getSchemaBuilder()->hasTable('capas')) {
+                        $stats['capa_count'] = DB::table('capas')->count();
+                    }
+                });
+            } catch (\Throwable $e) {
+                // Tenant DB not initialized — leave defaults
+            }
+            return $stats;
+        });
 
         // Recent central audit logs for this tenant
         $auditLogs = CentralAuditLog::where('tenant_id', $id)
@@ -135,6 +152,7 @@ class TenantController extends Controller
         $this->authorizeMaster($request);
 
         $result = $this->onboarding->signup($request->all());
+        $this->invalidateCounts($result['tenant']->id);
 
         return response()->json([
             'message' => 'Tenant created',
@@ -182,6 +200,7 @@ class TenantController extends Controller
 
         $tenant = Tenant::findOrFail($id);
         $this->onboarding->suspend($tenant);
+        $this->invalidateCounts($id);
 
         return response()->json(['tenant' => $tenant->fresh()]);
     }
@@ -192,6 +211,7 @@ class TenantController extends Controller
 
         $tenant = Tenant::findOrFail($id);
         $this->onboarding->activate($tenant);
+        $this->invalidateCounts($id);
 
         return response()->json(['tenant' => $tenant->fresh()]);
     }
@@ -202,6 +222,7 @@ class TenantController extends Controller
 
         $tenant = Tenant::findOrFail($id);
         $this->onboarding->delete($tenant);
+        $this->invalidateCounts($id);
 
         return response()->json([
             'message' => 'Tenant marked for deletion (30-day grace period)',
@@ -215,8 +236,15 @@ class TenantController extends Controller
 
         $tenant = Tenant::findOrFail($id);
         $this->onboarding->restore($tenant);
+        $this->invalidateCounts($id);
 
         return response()->json(['tenant' => $tenant->fresh()]);
+    }
+
+    private function invalidateCounts(string $id): void
+    {
+        Cache::forget("tenant:{$id}:counts");
+        Cache::forget("tenant:{$id}:stats");
     }
 
     private function authorizeMaster(Request $request): void
