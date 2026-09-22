@@ -483,6 +483,14 @@ export default function MasterTenantsPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">Copy this and send it to the admin securely.</p>
               </div>
+
+              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                <div className="font-semibold">Heads-up — provisioning takes ~30 seconds.</div>
+                <div className="mt-1 opacity-90">
+                  Behind the scenes we create the tenant database, run every tenant migration,
+                  seed 5 roles + all permissions, create the admin user, and send the invite email.
+                </div>
+              </div>
             </div>
           ) : (
             <div className="space-y-3 py-2">
@@ -574,7 +582,7 @@ export default function MasterTenantsPage() {
                   {provisionSaving ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Provisioning...
+                      Provisioning... (~30s)
                     </>
                   ) : (
                     "Provision"

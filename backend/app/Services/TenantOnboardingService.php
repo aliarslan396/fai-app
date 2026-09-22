@@ -134,12 +134,15 @@ class TenantOnboardingService
         $portSuffix = in_array($port, [80, 443]) ? '' : ':' . $port;
         $loginUrl = $protocol . '://' . $subdomain . '.' . $appDomain . $portSuffix . '/login';
 
-        // Send the admin invite email. Any mail failure is soft — the
-        // provision itself already succeeded and the caller still gets
-        // the password back so it can be relayed manually if needed.
+        // Queue the admin invite email so provisioning does not wait on
+        // SMTP handshake. Any failure is soft — the provision itself
+        // already succeeded and the caller still gets the password back
+        // so it can be relayed manually. Queue driver falls back to sync
+        // on hosts without redis/database queue configured, in which
+        // case the connect-time cost lands here inline.
         $emailSent = false;
         try {
-            Mail::send(new TenantAdminInvite(
+            Mail::to($data['admin_email'])->queue(new TenantAdminInvite(
                 tenant: $tenant,
                 adminName: $data['admin_name'],
                 adminEmail: $data['admin_email'],
