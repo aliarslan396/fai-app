@@ -2,10 +2,13 @@
 
 namespace App\Services;
 
+use App\Mail\TenantAdminInvite;
 use App\Models\CentralAuditLog;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Stancl\Tenancy\Database\Models\Domain;
@@ -39,7 +42,7 @@ class TenantOnboardingService
     ];
 
     /**
-     * @return array{tenant: Tenant, admin_email: string, login_url: string}
+     * @return array{tenant: Tenant, admin_email: string, login_url: string, email_sent: bool}
      */
     public function signup(array $data): array
     {
@@ -131,10 +134,32 @@ class TenantOnboardingService
         $portSuffix = in_array($port, [80, 443]) ? '' : ':' . $port;
         $loginUrl = $protocol . '://' . $subdomain . '.' . $appDomain . $portSuffix . '/login';
 
+        // Send the admin invite email. Any mail failure is soft — the
+        // provision itself already succeeded and the caller still gets
+        // the password back so it can be relayed manually if needed.
+        $emailSent = false;
+        try {
+            Mail::send(new TenantAdminInvite(
+                tenant: $tenant,
+                adminName: $data['admin_name'],
+                adminEmail: $data['admin_email'],
+                adminPassword: $data['admin_password'],
+                loginUrl: $loginUrl,
+            ));
+            $emailSent = true;
+        } catch (\Throwable $e) {
+            Log::warning('TenantAdminInvite email failed', [
+                'tenant_id' => $tenant->id,
+                'admin_email' => $data['admin_email'],
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         return [
             'tenant' => $tenant,
             'admin_email' => $data['admin_email'],
             'login_url' => $loginUrl,
+            'email_sent' => $emailSent,
         ];
     }
 
@@ -162,14 +187,73 @@ class TenantOnboardingService
         ]);
     }
 
-    public function delete(Tenant $tenant): void
+    /**
+     * Soft-delete a tenant: flip to cancelled, stamp deleted_at + purge_at,
+     * and revoke every user token so their app instantly kicks them out.
+     * The DB stays alive for `graceDays` (default 30) so a super admin can
+     * still Restore the tenant if this was a mistake — after which the
+     * daily `tenants:purge` command hard-drops the DB.
+     */
+    public function delete(Tenant $tenant, int $graceDays = 30): void
+    {
+        $tenant->update([
+            'status' => 'cancelled',
+            'deleted_at' => now(),
+            'purge_at' => now()->addDays($graceDays),
+        ]);
+
+        $this->revokeAllTokens($tenant);
+
+        CentralAuditLog::record('tenant.marked_for_deletion', [
+            'tenant_id' => $tenant->id,
+            'subject_type' => Tenant::class,
+            'subject_id' => $tenant->id,
+            'meta' => [
+                'subdomain' => $tenant->subdomain,
+                'grace_days' => $graceDays,
+                'purge_at' => $tenant->purge_at->toIso8601String(),
+            ],
+        ]);
+    }
+
+    /**
+     * Restore a tenant that is inside its grace window. Clears the delete
+     * stamps and flips status back to active. Users can log in again on
+     * their next request.
+     */
+    public function restore(Tenant $tenant): void
+    {
+        if (! $tenant->isMarkedForDeletion()) {
+            return;
+        }
+
+        $tenant->update([
+            'status' => 'active',
+            'deleted_at' => null,
+            'purge_at' => null,
+        ]);
+
+        CentralAuditLog::record('tenant.restored', [
+            'tenant_id' => $tenant->id,
+            'subject_type' => Tenant::class,
+            'subject_id' => $tenant->id,
+            'meta' => ['subdomain' => $tenant->subdomain],
+        ]);
+    }
+
+    /**
+     * Hard-drop the tenant + its DB. Called by the daily `tenants:purge`
+     * command once `purge_at` has passed. Do not call directly from a
+     * controller — always go through the grace-window path.
+     */
+    public function purge(Tenant $tenant): void
     {
         $tenantId = $tenant->id;
         $subdomain = $tenant->subdomain;
 
-        $tenant->delete(); // stancl auto-drops the tenant DB (so tokens die with it)
+        $tenant->delete(); // stancl auto-drops the tenant DB
 
-        CentralAuditLog::record('tenant.deleted', [
+        CentralAuditLog::record('tenant.purged', [
             'tenant_id' => $tenantId,
             'meta' => ['subdomain' => $subdomain],
         ]);

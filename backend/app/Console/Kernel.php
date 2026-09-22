@@ -12,7 +12,11 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // Nightly hard-drop of tenants whose 30-day grace window expired.
+        $schedule->command('tenants:purge')
+            ->dailyAt('03:00')
+            ->onOneServer()
+            ->withoutOverlapping();
     }
 
     /**

@@ -141,6 +141,7 @@ class TenantController extends Controller
             'tenant' => $result['tenant'],
             'admin_email' => $result['admin_email'],
             'login_url' => $result['login_url'],
+            'email_sent' => $result['email_sent'],
         ], 201);
     }
 
@@ -202,7 +203,20 @@ class TenantController extends Controller
         $tenant = Tenant::findOrFail($id);
         $this->onboarding->delete($tenant);
 
-        return response()->json(['message' => 'Tenant deleted']);
+        return response()->json([
+            'message' => 'Tenant marked for deletion (30-day grace period)',
+            'tenant' => $tenant->fresh(),
+        ]);
+    }
+
+    public function restore(Request $request, string $id): JsonResponse
+    {
+        $this->authorizeMaster($request);
+
+        $tenant = Tenant::findOrFail($id);
+        $this->onboarding->restore($tenant);
+
+        return response()->json(['tenant' => $tenant->fresh()]);
     }
 
     private function authorizeMaster(Request $request): void

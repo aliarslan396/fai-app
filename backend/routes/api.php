@@ -43,6 +43,7 @@ Route::prefix('v1')->group(function () {
         Route::delete('tenants/{id}', [TenantController::class, 'destroy']);
         Route::patch('tenants/{id}/suspend', [TenantController::class, 'suspend']);
         Route::patch('tenants/{id}/activate', [TenantController::class, 'activate']);
+        Route::patch('tenants/{id}/restore', [TenantController::class, 'restore']);
         Route::get('tenants/{id}/activity', [CentralAuditLogController::class, 'tenantActivity']);
 
         Route::get('activity', [CentralAuditLogController::class, 'index']);

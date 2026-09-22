@@ -33,8 +33,13 @@ interface ActionInfo {
 
 const ACTION_MAP: Record<string, ActionInfo> = {
   "tenant.created": { label: "Tenant created", icon: Plus, color: "text-emerald-600 bg-emerald-50" },
+  "tenant.updated": { label: "Tenant updated", icon: Activity, color: "text-slate-600 bg-slate-100" },
   "tenant.suspended": { label: "Tenant suspended", icon: Pause, color: "text-amber-600 bg-amber-50" },
   "tenant.activated": { label: "Tenant activated", icon: Play, color: "text-emerald-600 bg-emerald-50" },
+  "tenant.marked_for_deletion": { label: "Tenant marked for deletion", icon: Trash2, color: "text-rose-600 bg-rose-50" },
+  "tenant.restored": { label: "Tenant restored", icon: Play, color: "text-emerald-600 bg-emerald-50" },
+  "tenant.purged": { label: "Tenant purged (hard delete)", icon: Trash2, color: "text-destructive bg-destructive/10" },
+  "tenant.purge_failed": { label: "Tenant purge failed", icon: AlertTriangle, color: "text-destructive bg-destructive/10" },
   "tenant.deleted": { label: "Tenant deleted", icon: Trash2, color: "text-destructive bg-destructive/10" },
   "master.login.success": { label: "Master signed in", icon: LogIn, color: "text-blue-600 bg-blue-50" },
   "master.login.failed": { label: "Master login failed", icon: AlertTriangle, color: "text-amber-600 bg-amber-50" },

@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import {
   ArrowLeft, Building2, Users, Activity, Calendar, ExternalLink,
   Pause, Play, Trash2, AlertTriangle, Loader2, FileText, Image as ImageIcon,
-  HardDrive, UserCheck, AlertCircle, Wrench,
+  HardDrive, UserCheck, AlertCircle, Wrench, RotateCcw, Clock,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,6 +38,8 @@ interface Tenant {
   status: "trial" | "active" | "suspended" | "cancelled"
   user_limit: number
   trial_ends_at: string | null
+  deleted_at: string | null
+  purge_at: string | null
   created_at: string
   domains?: Array<{ id: number; domain: string }>
 }
@@ -138,10 +140,24 @@ export default function TenantDetailPage() {
     setBusy(true)
     try {
       await api.delete(`/master/tenants/${id}`)
-      toast.success("Tenant deleted")
-      router.push("/master/tenants")
+      toast.success("Tenant marked for deletion (30-day grace period)")
+      fetchData()
     } catch (err) {
       toast.error(getErrorMessage(err, "Failed to delete"))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const restore = async () => {
+    setBusy(true)
+    try {
+      await api.patch(`/master/tenants/${id}/restore`)
+      toast.success("Tenant restored")
+      fetchData()
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to restore"))
+    } finally {
       setBusy(false)
     }
   }
@@ -166,6 +182,11 @@ export default function TenantDetailPage() {
   const { tenant, stats, audit_logs } = data
   const logoSrc = resolveAssetUrl(tenant.logo_url)
   const isActive = tenant.status === "active" || tenant.status === "trial"
+  const isMarkedForDeletion =
+    tenant.status === "cancelled" && tenant.deleted_at !== null && tenant.purge_at !== null
+  const daysUntilPurge = isMarkedForDeletion && tenant.purge_at
+    ? Math.max(0, Math.ceil((new Date(tenant.purge_at).getTime() - Date.now()) / 86_400_000))
+    : null
 
   return (
     <div className="space-y-6">
@@ -209,25 +230,53 @@ export default function TenantDetailPage() {
         </div>
 
         <div className="flex gap-2">
-          {isActive ? (
-            <Button variant="outline" onClick={suspend} disabled={busy}>
-              <Pause className="mr-2 h-4 w-4" /> Suspend
+          {isMarkedForDeletion ? (
+            <Button onClick={restore} disabled={busy}>
+              <RotateCcw className="mr-2 h-4 w-4" /> Restore
             </Button>
           ) : (
-            <Button onClick={activate} disabled={busy}>
-              <Play className="mr-2 h-4 w-4" /> Activate
-            </Button>
+            <>
+              {isActive ? (
+                <Button variant="outline" onClick={suspend} disabled={busy}>
+                  <Pause className="mr-2 h-4 w-4" /> Suspend
+                </Button>
+              ) : (
+                <Button onClick={activate} disabled={busy}>
+                  <Play className="mr-2 h-4 w-4" /> Activate
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                onClick={() => setConfirmDelete(true)}
+                disabled={busy}
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" /> Delete
+              </Button>
+            </>
           )}
-          <Button
-            variant="ghost"
-            onClick={() => setConfirmDelete(true)}
-            disabled={busy}
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-          >
-            <Trash2 className="mr-2 h-4 w-4" /> Delete
-          </Button>
         </div>
       </div>
+
+      {isMarkedForDeletion && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
+          <div className="flex items-start gap-3">
+            <Clock className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-rose-900">
+                Scheduled for permanent deletion in {daysUntilPurge} day{daysUntilPurge === 1 ? "" : "s"}
+              </div>
+              <div className="mt-1 text-sm text-rose-800">
+                All users are locked out and the tenant database will be dropped on{" "}
+                <span className="font-mono">
+                  {tenant.purge_at ? new Date(tenant.purge_at).toLocaleDateString() : ""}
+                </span>
+                . Click <strong>Restore</strong> to cancel the deletion — the workspace resumes exactly where it left off.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -365,14 +414,15 @@ export default function TenantDetailPage() {
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div className="space-y-2">
-                <AlertDialogTitle>Delete {tenant.name}?</AlertDialogTitle>
+                <AlertDialogTitle>Mark {tenant.name} for deletion?</AlertDialogTitle>
                 <AlertDialogDescription className="space-y-2">
                   <span className="block">
-                    This permanently deletes the tenant and drops their database. All users, data,
-                    and settings will be lost.
+                    All users are locked out immediately, but the tenant DB is retained for a
+                    <strong> 30-day grace period</strong>. You can Restore any time before then.
                   </span>
-                  <span className="block font-medium text-destructive">
-                    This action cannot be undone.
+                  <span className="block">
+                    After 30 days the DB and every file, drawing, plan, and audit record is
+                    permanently dropped.
                   </span>
                 </AlertDialogDescription>
               </div>
@@ -387,11 +437,11 @@ export default function TenantDetailPage() {
             >
               {busy ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Marking...
                 </>
               ) : (
                 <>
-                  <Trash2 className="mr-2 h-4 w-4" /> Delete tenant
+                  <Trash2 className="mr-2 h-4 w-4" /> Mark for deletion
                 </>
               )}
             </AlertDialogAction>
@@ -405,8 +455,13 @@ export default function TenantDetailPage() {
 function formatAction(action: string): string {
   const map: Record<string, string> = {
     "tenant.created": "Tenant created",
+    "tenant.updated": "Tenant updated",
     "tenant.suspended": "Tenant suspended",
     "tenant.activated": "Tenant activated",
+    "tenant.marked_for_deletion": "Tenant marked for deletion",
+    "tenant.restored": "Tenant restored",
+    "tenant.purged": "Tenant purged",
+    "tenant.purge_failed": "Tenant purge failed",
     "tenant.deleted": "Tenant deleted",
     "master.login.success": "Master admin signed in",
     "master.login.failed": "Master login failed",

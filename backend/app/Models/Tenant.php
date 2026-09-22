@@ -25,11 +25,15 @@ class Tenant extends BaseTenant implements TenantWithDatabase
             'trial_ends_at',
             'stripe_customer_id',
             'stripe_subscription_id',
+            'deleted_at',
+            'purge_at',
         ];
     }
 
     protected $casts = [
         'trial_ends_at' => 'datetime',
+        'deleted_at' => 'datetime',
+        'purge_at' => 'datetime',
         'data' => 'array',
     ];
 
@@ -41,5 +45,21 @@ class Tenant extends BaseTenant implements TenantWithDatabase
     public function isOnTrial(): bool
     {
         return $this->status === 'trial' && $this->trial_ends_at && $this->trial_ends_at->isFuture();
+    }
+
+    public function isMarkedForDeletion(): bool
+    {
+        return $this->status === 'cancelled' && $this->deleted_at !== null;
+    }
+
+    /**
+     * Days until the tenant DB is purged. Null if not marked for deletion.
+     */
+    public function daysUntilPurge(): ?int
+    {
+        if (! $this->purge_at) {
+            return null;
+        }
+        return max(0, (int) now()->diffInDays($this->purge_at, false));
     }
 }

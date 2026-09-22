@@ -58,6 +58,8 @@ interface Tenant {
   status: "trial" | "active" | "suspended" | "cancelled"
   user_limit: number
   trial_ends_at: string | null
+  deleted_at: string | null
+  purge_at: string | null
   created_at: string
   counts?: { users: number; plans: number; drawings: number }
 }
@@ -89,7 +91,7 @@ export default function MasterTenantsPage() {
   })
   const [provisionSaving, setProvisionSaving] = useState(false)
   const [provisionResult, setProvisionResult] = useState<
-    | { admin_email: string; admin_password: string; login_url: string }
+    | { admin_email: string; admin_password: string; login_url: string; email_sent: boolean }
     | null
   >(null)
   const [copied, setCopied] = useState<"password" | "url" | null>(null)
@@ -133,6 +135,16 @@ export default function MasterTenantsPage() {
     }
   }
 
+  const restore = async (id: string) => {
+    try {
+      await api.patch(`/master/tenants/${id}/restore`)
+      toast.success("Tenant restored")
+      fetchTenants()
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to restore"))
+    }
+  }
+
   // Generate a strong random password so admin doesn't have to invent one.
   // Uses crypto.getRandomValues for cryptographic-grade entropy (browser).
   const generatePassword = (): string => {
@@ -163,6 +175,7 @@ export default function MasterTenantsPage() {
         admin_email: data.admin_email,
         admin_password: provisionForm.admin_password,
         login_url: data.login_url,
+        email_sent: Boolean(data.email_sent),
       })
       fetchTenants()
     } catch (err) {
@@ -326,25 +339,42 @@ export default function MasterTenantsPage() {
                             View details
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          {t.status === "active" || t.status === "trial" ? (
-                            <DropdownMenuItem onClick={() => suspend(t.id)}>
-                              <Pause className="mr-2 h-4 w-4" />
-                              Suspend
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onClick={() => activate(t.id)}>
+                          {t.status === "cancelled" && t.deleted_at ? (
+                            <DropdownMenuItem onClick={() => restore(t.id)}>
                               <Play className="mr-2 h-4 w-4" />
-                              Activate
+                              Restore
                             </DropdownMenuItem>
+                          ) : t.status === "active" || t.status === "trial" ? (
+                            <>
+                              <DropdownMenuItem onClick={() => suspend(t.id)}>
+                                <Pause className="mr-2 h-4 w-4" />
+                                Suspend
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => setDeleteTarget(t)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Mark for deletion
+                              </DropdownMenuItem>
+                            </>
+                          ) : (
+                            <>
+                              <DropdownMenuItem onClick={() => activate(t.id)}>
+                                <Play className="mr-2 h-4 w-4" />
+                                Activate
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => setDeleteTarget(t)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Mark for deletion
+                              </DropdownMenuItem>
+                            </>
                           )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => setDeleteTarget(t)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete tenant
-                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -371,8 +401,10 @@ export default function MasterTenantsPage() {
             </DialogTitle>
             <DialogDescription>
               {provisionResult
-                ? "Copy the login link and password now — the password is not shown again."
-                : "Creates a tenant DB, seeds roles + permissions, and creates the first admin user."}
+                ? provisionResult.email_sent
+                  ? "Invite email sent to the admin. Copy the credentials below as a backup — the password is not shown again."
+                  : "Email delivery failed — copy the credentials below and send them to the admin manually."
+                : "Creates a tenant DB, seeds roles + permissions, creates the first admin user, and emails them the login link."}
             </DialogDescription>
           </DialogHeader>
 
@@ -454,6 +486,24 @@ export default function MasterTenantsPage() {
             </div>
           ) : (
             <div className="space-y-3 py-2">
+              <div
+                className={
+                  provisionResult.email_sent
+                    ? "flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
+                    : "flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+                }
+              >
+                {provisionResult.email_sent ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4" />
+                )}
+                <span>
+                  {provisionResult.email_sent
+                    ? "Invite email delivered."
+                    : "Email delivery failed — relay credentials manually."}
+                </span>
+              </div>
               <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">Admin email</div>
                 <div className="font-mono">{provisionResult.admin_email}</div>
@@ -546,13 +596,15 @@ export default function MasterTenantsPage() {
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div className="space-y-2">
-                <AlertDialogTitle>Delete {deleteTarget?.name}?</AlertDialogTitle>
+                <AlertDialogTitle>Mark {deleteTarget?.name} for deletion?</AlertDialogTitle>
                 <AlertDialogDescription className="space-y-2">
                   <span className="block">
-                    This permanently deletes the tenant and drops their entire database.
+                    All users are locked out immediately. The tenant DB is retained for a
+                    <strong> 30-day grace period</strong> — you can Restore any time before then.
                   </span>
-                  <span className="block font-medium text-destructive">
-                    This action cannot be undone.
+                  <span className="block">
+                    After 30 days the DB and every drawing, plan, and audit record is
+                    permanently dropped.
                   </span>
                 </AlertDialogDescription>
               </div>
@@ -589,12 +641,12 @@ export default function MasterTenantsPage() {
               {deleting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting...
+                  Marking...
                 </>
               ) : (
                 <>
                   <Trash2 className="mr-2 h-4 w-4" />
-                  Delete tenant
+                  Mark for deletion
                 </>
               )}
             </AlertDialogAction>
