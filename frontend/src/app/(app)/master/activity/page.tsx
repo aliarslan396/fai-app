@@ -1,15 +1,24 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Activity, AlertTriangle, Building2, ChevronLeft, ChevronRight,
-  LogIn, LogOut, Pause, Play, Plus, ShieldAlert, ShieldCheck, Trash2,
+  LogIn, LogOut, Pause, Play, Plus, RefreshCw, ShieldAlert, ShieldCheck, Trash2, X,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { EmptyState } from "@/components/empty-state"
 import { ErrorState } from "@/components/error-state"
 import api from "@/lib/api"
@@ -31,6 +40,12 @@ interface ActionInfo {
   color: string
 }
 
+interface TenantOption {
+  id: string
+  name: string
+  subdomain: string
+}
+
 const ACTION_MAP: Record<string, ActionInfo> = {
   "tenant.created": { label: "Tenant created", icon: Plus, color: "text-emerald-600 bg-emerald-50" },
   "tenant.updated": { label: "Tenant updated", icon: Activity, color: "text-slate-600 bg-slate-100" },
@@ -47,8 +62,15 @@ const ACTION_MAP: Record<string, ActionInfo> = {
   "master.logout": { label: "Master signed out", icon: LogOut, color: "text-muted-foreground bg-muted" },
 }
 
+const ALL_ACTIONS_VALUE = "__all__"
+const ALL_TENANTS_VALUE = "__all__"
+
 function getActionInfo(action: string): ActionInfo {
   return ACTION_MAP[action] || { label: action, icon: Activity, color: "text-muted-foreground bg-muted" }
+}
+
+function actionLabel(action: string): string {
+  return ACTION_MAP[action]?.label ?? action
 }
 
 function formatRelative(iso: string): string {
@@ -64,68 +86,257 @@ function formatRelative(iso: string): string {
   return date.toLocaleDateString()
 }
 
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function daysAgoIso(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - days)
+  return d.toISOString().slice(0, 10)
+}
+
+const DATE_PRESETS: { label: string; days: number | null }[] = [
+  { label: "Today", days: 0 },
+  { label: "Last 7d", days: 7 },
+  { label: "Last 30d", days: 30 },
+  { label: "All", days: null },
+]
+
 export default function MasterActivityPage() {
   const [entries, setEntries] = useState<Entry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
-  const [filterTenant, setFilterTenant] = useState("")
+  const [total, setTotal] = useState(0)
 
-  const fetchLogs = async (pageNum = 1) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { data } = await api.get("/master/activity", {
-        params: {
-          page: pageNum,
-          tenant_id: filterTenant || undefined,
-          per_page: 25,
-        },
-      })
-      setEntries(data.data || [])
-      setLastPage(data.last_page || 1)
-      setPage(data.current_page || 1)
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to load activity"))
-    } finally {
-      setLoading(false)
+  const [filterTenant, setFilterTenant] = useState<string>(ALL_TENANTS_VALUE)
+  const [filterAction, setFilterAction] = useState<string>(ALL_ACTIONS_VALUE)
+  const [dateFrom, setDateFrom] = useState<string>("")
+  const [dateTo, setDateTo] = useState<string>("")
+
+  const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([])
+  const [actionOptions, setActionOptions] = useState<string[]>([])
+
+  const activeFilterCount = useMemo(() => {
+    let n = 0
+    if (filterTenant !== ALL_TENANTS_VALUE) n++
+    if (filterAction !== ALL_ACTIONS_VALUE) n++
+    if (dateFrom) n++
+    if (dateTo) n++
+    return n
+  }, [filterTenant, filterAction, dateFrom, dateTo])
+
+  const fetchLogs = useCallback(
+    async (pageNum = 1) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data } = await api.get("/master/activity", {
+          params: {
+            page: pageNum,
+            per_page: 25,
+            tenant_id: filterTenant !== ALL_TENANTS_VALUE ? filterTenant : undefined,
+            action: filterAction !== ALL_ACTIONS_VALUE ? filterAction : undefined,
+            date_from: dateFrom || undefined,
+            date_to: dateTo || undefined,
+          },
+        })
+        setEntries(data.data || [])
+        setLastPage(data.last_page || 1)
+        setPage(data.current_page || 1)
+        setTotal(data.total ?? (data.data?.length || 0))
+      } catch (err) {
+        setError(getErrorMessage(err, "Failed to load activity"))
+      } finally {
+        setLoading(false)
+      }
+    },
+    [filterTenant, filterAction, dateFrom, dateTo],
+  )
+
+  // Refetch on any filter change
+  useEffect(() => {
+    void fetchLogs(1)
+  }, [fetchLogs])
+
+  // Fetch dropdown options once
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { data } = await api.get("/master/tenants", { params: { per_page: 200 } })
+        setTenantOptions(
+          (data.data || []).map((t: TenantOption) => ({
+            id: t.id,
+            name: t.name,
+            subdomain: t.subdomain,
+          })),
+        )
+      } catch {
+        // Not fatal — tenant dropdown just shows nothing
+      }
+      try {
+        const { data } = await api.get("/master/activity/actions")
+        setActionOptions(data.actions || [])
+      } catch {
+        // Not fatal — action dropdown falls back to hardcoded ACTION_MAP keys
+        setActionOptions(Object.keys(ACTION_MAP))
+      }
+    })()
+  }, [])
+
+  const applyPreset = (days: number | null) => {
+    if (days === null) {
+      setDateFrom("")
+      setDateTo("")
+    } else if (days === 0) {
+      const t = todayIso()
+      setDateFrom(t)
+      setDateTo(t)
+    } else {
+      setDateFrom(daysAgoIso(days))
+      setDateTo(todayIso())
     }
   }
 
-  useEffect(() => {
-    fetchLogs(1)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const clearAllFilters = () => {
+    setFilterTenant(ALL_TENANTS_VALUE)
+    setFilterAction(ALL_ACTIONS_VALUE)
+    setDateFrom("")
+    setDateTo("")
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
-        <p className="text-sm text-muted-foreground">
-          Platform-wide audit log across all tenants
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
+          <p className="text-sm text-muted-foreground">
+            Platform-wide audit log across all tenants
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => fetchLogs(page)} disabled={loading}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
       </div>
 
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5" />
-                Recent activity
-              </CardTitle>
-              <CardDescription>Master-level events</CardDescription>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Activity className="h-4 w-4" />
+            Filters
+            {activeFilterCount > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {activeFilterCount} active
+              </Badge>
+            )}
+          </CardTitle>
+          <CardDescription>Narrow the feed by tenant, action, or date range.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="f_tenant" className="text-xs uppercase tracking-wide text-muted-foreground">
+                Tenant
+              </Label>
+              <Select value={filterTenant} onValueChange={setFilterTenant}>
+                <SelectTrigger id="f_tenant">
+                  <SelectValue placeholder="All tenants" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_TENANTS_VALUE}>All tenants</SelectItem>
+                  {tenantOptions.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}{" "}
+                      <span className="ml-1 font-mono text-xs text-muted-foreground">
+                        {t.subdomain}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Input
-              placeholder="Filter by tenant ID (e.g. acme)..."
-              value={filterTenant}
-              onChange={(e) => setFilterTenant(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && fetchLogs(1)}
-              className="max-w-xs font-mono text-sm"
-              disabled={loading}
-            />
+
+            <div className="space-y-1.5">
+              <Label htmlFor="f_action" className="text-xs uppercase tracking-wide text-muted-foreground">
+                Action
+              </Label>
+              <Select value={filterAction} onValueChange={setFilterAction}>
+                <SelectTrigger id="f_action">
+                  <SelectValue placeholder="All actions" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_ACTIONS_VALUE}>All actions</SelectItem>
+                  {actionOptions.map((a) => (
+                    <SelectItem key={a} value={a}>
+                      {actionLabel(a)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="f_from" className="text-xs uppercase tracking-wide text-muted-foreground">
+                From
+              </Label>
+              <Input
+                id="f_from"
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="f_to" className="text-xs uppercase tracking-wide text-muted-foreground">
+                To
+              </Label>
+              <Input
+                id="f_to"
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                max={todayIso()}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
           </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Quick range
+            </span>
+            {DATE_PRESETS.map((p) => (
+              <Button key={p.label} variant="outline" size="sm" onClick={() => applyPreset(p.days)}>
+                {p.label}
+              </Button>
+            ))}
+            {activeFilterCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearAllFilters}
+                className="text-muted-foreground"
+              >
+                <X className="mr-1 h-3 w-3" />
+                Clear all filters
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShieldCheck className="h-4 w-4" />
+            {loading ? "Loading..." : `${total.toLocaleString()} event${total === 1 ? "" : "s"}`}
+          </CardTitle>
+          <CardDescription>Most recent first.</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -149,8 +360,17 @@ export default function MasterActivityPage() {
           ) : entries.length === 0 ? (
             <EmptyState
               icon={Activity}
-              title="No activity yet"
-              description="Platform events will appear here as tenants are created and managed."
+              title={activeFilterCount > 0 ? "No events match these filters" : "No activity yet"}
+              description={
+                activeFilterCount > 0
+                  ? "Try widening the date range or clearing a filter."
+                  : "Platform events will appear here as tenants are created and managed."
+              }
+              action={
+                activeFilterCount > 0
+                  ? { label: "Clear filters", onClick: clearAllFilters, icon: X }
+                  : undefined
+              }
             />
           ) : (
             <>
@@ -169,7 +389,10 @@ export default function MasterActivityPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-2">
                           <span className="text-sm font-medium">{info.label}</span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
+                          <span
+                            className="shrink-0 text-xs text-muted-foreground"
+                            title={new Date(e.created_at).toLocaleString()}
+                          >
                             {formatRelative(e.created_at)}
                           </span>
                         </div>

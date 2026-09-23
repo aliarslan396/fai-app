@@ -26,13 +26,55 @@ class CentralAuditLogController extends Controller
         }
 
         if ($action = $request->input('action')) {
-            $query->where('action', 'ilike', "%{$action}%");
+            // Exact match wins if the value has no wildcard/space; otherwise
+            // fall back to substring so the free-text field still works.
+            if (preg_match('/^[a-z0-9_.-]+$/i', $action)) {
+                $query->where('action', $action);
+            } else {
+                $query->where('action', 'ilike', "%{$action}%");
+            }
+        }
+
+        if ($from = $request->input('date_from')) {
+            try {
+                $query->where('created_at', '>=', new \DateTimeImmutable($from));
+            } catch (\Throwable) {
+                // silently ignore malformed date
+            }
+        }
+
+        if ($to = $request->input('date_to')) {
+            try {
+                // Inclusive of the end date — bump to end of day.
+                $end = (new \DateTimeImmutable($to))->modify('+1 day');
+                $query->where('created_at', '<', $end);
+            } catch (\Throwable) {
+                // silently ignore malformed date
+            }
         }
 
         $logs = $query->orderByDesc('id')
             ->paginate($request->input('per_page', 50));
 
         return response()->json($logs);
+    }
+
+    /**
+     * Distinct action strings observed across the audit log. Powers the
+     * action-type dropdown on the master activity page so the UI does
+     * not have to guess what actions exist.
+     */
+    public function actions(Request $request): JsonResponse
+    {
+        $this->authorizeMaster($request);
+
+        $actions = CentralAuditLog::query()
+            ->select('action')
+            ->distinct()
+            ->orderBy('action')
+            ->pluck('action');
+
+        return response()->json(['actions' => $actions]);
     }
 
     public function tenantActivity(Request $request, string $id): JsonResponse

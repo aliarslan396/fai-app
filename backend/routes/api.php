@@ -47,5 +47,6 @@ Route::prefix('v1')->group(function () {
         Route::get('tenants/{id}/activity', [CentralAuditLogController::class, 'tenantActivity']);
 
         Route::get('activity', [CentralAuditLogController::class, 'index']);
+        Route::get('activity/actions', [CentralAuditLogController::class, 'actions']);
     });
 });
