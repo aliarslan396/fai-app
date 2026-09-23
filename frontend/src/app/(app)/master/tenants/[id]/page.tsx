@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import {
   ArrowLeft, Building2, Users, Activity, Calendar, ExternalLink,
   Pause, Play, Trash2, AlertTriangle, Loader2, FileText, Image as ImageIcon,
-  HardDrive, UserCheck, AlertCircle, Wrench, RotateCcw, Clock,
+  HardDrive, UserCheck, AlertCircle, Wrench, RotateCcw, Clock, Pencil,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,6 +23,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
 import { resolveAssetUrl } from "@/lib/tenant"
@@ -92,6 +102,9 @@ export default function TenantDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm, setEditForm] = useState({ name: "", primary_color: "#1F4E79", user_limit: 10 })
+  const [editSaving, setEditSaving] = useState(false)
 
   const fetchData = async () => {
     setLoading(true)
@@ -159,6 +172,30 @@ export default function TenantDetailPage() {
       toast.error(getErrorMessage(err, "Failed to restore"))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const openEdit = () => {
+    if (!data) return
+    setEditForm({
+      name: data.tenant.name,
+      primary_color: data.tenant.primary_color,
+      user_limit: data.tenant.user_limit,
+    })
+    setEditOpen(true)
+  }
+
+  const saveEdit = async () => {
+    setEditSaving(true)
+    try {
+      await api.patch(`/master/tenants/${id}`, editForm)
+      toast.success("Tenant updated")
+      setEditOpen(false)
+      fetchData()
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to update tenant"))
+    } finally {
+      setEditSaving(false)
     }
   }
 
@@ -236,6 +273,9 @@ export default function TenantDetailPage() {
             </Button>
           ) : (
             <>
+              <Button variant="outline" onClick={openEdit} disabled={busy}>
+                <Pencil className="mr-2 h-4 w-4" /> Edit
+              </Button>
               {isActive ? (
                 <Button variant="outline" onClick={suspend} disabled={busy}>
                   <Pause className="mr-2 h-4 w-4" /> Suspend
@@ -405,6 +445,96 @@ export default function TenantDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={editOpen} onOpenChange={(o) => !editSaving && setEditOpen(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit {tenant.name}</DialogTitle>
+            <DialogDescription>Update the workspace name, brand color, and user limit.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit_name">Company name</Label>
+              <Input
+                id="edit_name"
+                value={editForm.name}
+                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                disabled={editSaving}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit_color">Primary brand color</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="edit_color_picker"
+                  type="color"
+                  value={editForm.primary_color}
+                  onChange={(e) => setEditForm((f) => ({ ...f, primary_color: e.target.value }))}
+                  disabled={editSaving}
+                  className="h-9 w-12 shrink-0 cursor-pointer rounded border border-input bg-transparent p-0"
+                />
+                <Input
+                  id="edit_color"
+                  value={editForm.primary_color}
+                  onChange={(e) => setEditForm((f) => ({ ...f, primary_color: e.target.value }))}
+                  disabled={editSaving}
+                  className="font-mono"
+                  placeholder="#1F4E79"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Used across sidebar highlights, buttons, and PDF report headers.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit_user_limit">User limit</Label>
+              <Input
+                id="edit_user_limit"
+                type="number"
+                min={1}
+                max={10000}
+                value={editForm.user_limit}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, user_limit: Math.max(1, Number(e.target.value) || 1) }))
+                }
+                disabled={editSaving}
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Currently using {stats.user_count} of {editForm.user_limit} seats.
+                {editForm.user_limit < stats.user_count && (
+                  <span className="block font-medium text-amber-700">
+                    Warning: below current usage — no users are deleted, but new users cannot be added
+                    until the count drops or the limit is raised.
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editSaving}>
+              Cancel
+            </Button>
+            <Button
+              onClick={saveEdit}
+              disabled={
+                editSaving ||
+                editForm.name.trim().length < 2 ||
+                !/^#[0-9A-Fa-f]{6}$/.test(editForm.primary_color)
+              }
+            >
+              {editSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>

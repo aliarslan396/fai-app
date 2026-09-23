@@ -189,6 +189,7 @@ class TenantController extends Controller
                 'new_values' => array_intersect_key($after, array_flip($changed)),
                 'meta' => ['fields' => $changed],
             ]);
+            $this->invalidateCounts($tenant->id);
         }
 
         return response()->json(['tenant' => $tenant]);
