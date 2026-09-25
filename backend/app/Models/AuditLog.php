@@ -2,15 +2,37 @@
 
 namespace App\Models;
 
+use App\Exceptions\ImmutableRecordException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 
 /**
  * Tenant audit log — runs INSIDE tenant database.
  * No tenant_id column needed — entire DB is one tenant.
+ *
+ * Append-only by contract (21 CFR Part 11 §11.10(e): audit trails must
+ * be "secure, computer-generated, time-stamped" and must not obscure
+ * previously recorded information). The boot hooks below make the
+ * immutability structural rather than a convention — any UPDATE or
+ * DELETE through Eloquent throws instead of silently succeeding.
  */
 class AuditLog extends Model
 {
+    protected static function booted(): void
+    {
+        static::updating(function (self $log) {
+            throw new ImmutableRecordException(
+                "Audit log #{$log->id} cannot be modified — audit records are append-only (21 CFR Part 11)."
+            );
+        });
+
+        static::deleting(function (self $log) {
+            throw new ImmutableRecordException(
+                "Audit log #{$log->id} cannot be deleted — audit records are append-only (21 CFR Part 11)."
+            );
+        });
+    }
+
     protected $fillable = [
         'user_id',
         'action',

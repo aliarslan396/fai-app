@@ -2,15 +2,36 @@
 
 namespace App\Models;
 
+use App\Exceptions\ImmutableRecordException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 
 /**
  * Central audit log — tracks master-level actions only.
  * Lives in the central database.
+ *
+ * Append-only by contract, same as the tenant-scoped AuditLog. Master
+ * ops actions (tenant provision / suspend / purge) are exactly the
+ * records an auditor would most want to see tampered with, so the
+ * immutability is enforced structurally.
  */
 class CentralAuditLog extends Model
 {
+    protected static function booted(): void
+    {
+        static::updating(function (self $log) {
+            throw new ImmutableRecordException(
+                "Central audit log #{$log->id} cannot be modified — audit records are append-only (21 CFR Part 11)."
+            );
+        });
+
+        static::deleting(function (self $log) {
+            throw new ImmutableRecordException(
+                "Central audit log #{$log->id} cannot be deleted — audit records are append-only (21 CFR Part 11)."
+            );
+        });
+    }
+
     protected $table = 'central_audit_logs';
 
     protected $fillable = [
