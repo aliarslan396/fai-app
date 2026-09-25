@@ -30,9 +30,10 @@ class InspectionSessionController extends Controller
             ->with(['part:id,part_number,revision,description', 'plan:id,plan_number,plan_name', 'creator:id,name'])
             ->orderByDesc('updated_at');
 
-        // Inspectors see their own only — admins/qa_manager see all
+        // Doc §7.3 "Inspections (own)" vs "Inspections (all)" — anyone
+        // without inspections.view_all is scoped to sessions they created.
         $user = $request->user();
-        if (! $user->hasAnyRole(['admin', 'qa_manager'])) {
+        if (! $user->can('inspections.view_all')) {
             $query->where('created_by', $user->id);
         }
 
@@ -66,9 +67,10 @@ class InspectionSessionController extends Controller
             'creator:id,name,email',
         ])->findOrFail($id);
 
-        // Inspector access guard — own sessions only unless admin/manager
+        // Doc §7.3 — own sessions only unless the role carries
+        // inspections.view_all (admin, qa_manager, auditor by default).
         $user = $request->user();
-        if (! $user->hasAnyRole(['admin', 'qa_manager']) && $session->created_by !== $user->id) {
+        if (! $user->can('inspections.view_all') && $session->created_by !== $user->id) {
             abort(403, 'You do not have access to this session.');
         }
 

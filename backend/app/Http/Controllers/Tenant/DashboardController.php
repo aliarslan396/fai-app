@@ -20,11 +20,13 @@ class DashboardController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        // Doc §7.3 — org-wide inspection counts require
+        // inspections.view_all; everyone else sees their own numbers.
         $user = $request->user();
-        $isLeader = $user && $user->hasAnyRole(['admin', 'qa_manager']);
+        $seesAllInspections = $user && $user->can('inspections.view_all');
 
         $sessionQuery = InspectionSession::query();
-        if (! $isLeader) {
+        if (! $seesAllInspections) {
             $sessionQuery->where('created_by', $user->id);
         }
 
@@ -132,7 +134,7 @@ class DashboardController extends Controller
             'recent_inspections' => $recent,
             'pending_actions' => $pending,
             'pending_reviews' => $pendingReviewRows,
-            'scope' => $isLeader ? 'org' : 'self',
+            'scope' => $seesAllInspections ? 'org' : 'self',
         ]);
     }
 }

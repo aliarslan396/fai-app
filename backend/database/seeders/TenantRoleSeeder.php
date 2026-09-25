@@ -51,6 +51,9 @@ class TenantRoleSeeder extends Seeder
 
             // Inspections
             'inspections.view',
+            // Doc §7.3 splits "Inspections (own)" from "Inspections (all)".
+            // Without view_all a user only sees sessions they created.
+            'inspections.view_all',
             'inspections.create',
             'inspections.edit',
             'inspections.delete',
@@ -83,8 +86,16 @@ class TenantRoleSeeder extends Seeder
             'tenant.billing',
         ];
 
+        // Track which permissions this run introduces. Existing roles keep
+        // whatever an admin configured for them, but they still need to
+        // receive permissions that did not exist when they were last tuned
+        // — otherwise a new release silently strips capability from them.
+        $newPermissions = [];
         foreach ($permissions as $permission) {
-            Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
+            $model = Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
+            if ($model->wasRecentlyCreated) {
+                $newPermissions[] = $permission;
+            }
         }
 
         // Roles with permissions
@@ -126,11 +137,76 @@ class TenantRoleSeeder extends Seeder
                 'gauges.view',
                 'reports.view',
             ],
+
+            // Doc §7.3 read-only roles. doc_controller and trainer share
+            // an identical View-everything profile in the matrix; auditor
+            // adds org-wide inspection visibility and full report access.
+            'doc_controller' => [
+                'parts.view',
+                'customers.view',
+                'plans.view',
+                'drawings.view',
+                'inspections.view',
+                'ncr.view',
+                'capa.view',
+                'gauges.view',
+                'reports.view',
+            ],
+            'trainer' => [
+                'parts.view',
+                'customers.view',
+                'plans.view',
+                'drawings.view',
+                'inspections.view',
+                'ncr.view',
+                'capa.view',
+                'gauges.view',
+                'reports.view',
+            ],
+            'auditor' => [
+                'parts.view',
+                'customers.view',
+                'plans.view',
+                'drawings.view',
+                'inspections.view',
+                'inspections.view_all',
+                'inspections.export',
+                'ncr.view',
+                'capa.view',
+                'gauges.view',
+                'reports.view',
+                'reports.export',
+            ],
         ];
 
         foreach ($roles as $roleName => $rolePermissions) {
-            $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'web']);
-            $role->syncPermissions($rolePermissions);
+            $role = Role::where('name', $roleName)->where('guard_name', 'web')->first();
+
+            if (! $role) {
+                Role::create(['name' => $roleName, 'guard_name' => 'web'])
+                    ->syncPermissions($rolePermissions);
+                continue;
+            }
+
+            // The role already exists, so an admin may have tuned it via
+            // the Customizable Rights UI (doc §3 / Timothy Aug 26). This
+            // seeder runs on every deploy, so a blanket re-sync here would
+            // silently revert their choices.
+            //
+            // `admin` is the one exception: RolesController treats it as
+            // immutable and always-everything, so it always re-syncs.
+            if ($roleName === 'admin') {
+                $role->syncPermissions($rolePermissions);
+                continue;
+            }
+
+            // For every other existing role, grant only the permissions
+            // this release introduced that belong in its default profile.
+            // Anything the admin previously added or removed is untouched.
+            $toGrant = array_intersect($newPermissions, $rolePermissions);
+            if ($toGrant !== []) {
+                $role->givePermissionTo($toGrant);
+            }
         }
     }
 }
