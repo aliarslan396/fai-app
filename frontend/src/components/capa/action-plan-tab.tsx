@@ -6,7 +6,7 @@ import { CheckCircle2, Loader2, Play, Plus, Trash2, XOctagon } from "lucide-reac
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -176,10 +176,10 @@ function AddActionForm({
           </div>
           <div className="space-y-1">
             <Label>Due Date</Label>
-            <Input
-              type="date"
+            <DatePicker
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={setDueDate}
+              placeholder="Select due date"
             />
           </div>
         </div>

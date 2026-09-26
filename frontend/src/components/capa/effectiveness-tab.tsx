@@ -6,7 +6,7 @@ import { CalendarCheck, CheckCircle2, Loader2, XCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
@@ -88,11 +88,11 @@ export function EffectivenessTab({ capa, onSaved }: { capa: Capa; onSaved: () =>
           <div className="grid gap-3 md:grid-cols-[1fr_auto]">
             <div className="space-y-1">
               <Label>Review Date (typically 30+ days after actions complete)</Label>
-              <Input
-                type="date"
+              <DatePicker
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={setDate}
                 disabled={busy || closed}
+                placeholder="Select review date"
               />
             </div>
             <div className="flex items-end">

@@ -7,8 +7,8 @@ import { ArrowLeft, Download, Filter, Loader2, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { DatePicker } from "@/components/ui/date-picker"
 import { downloadReportPdf, type ReportFilters } from "@/lib/reports"
 import { getErrorMessage } from "@/lib/errors"
 
@@ -89,22 +89,24 @@ export function ReportShell({
               <Label htmlFor="from" className="flex items-center gap-1 text-xs">
                 <Filter className="h-3 w-3" /> From
               </Label>
-              <Input
+              <DatePicker
                 id="from"
-                type="date"
                 value={filters.from ?? ""}
-                onChange={(e) => onFiltersChange({ ...filters, from: e.target.value })}
-                className="w-40"
+                max={filters.to || undefined}
+                onChange={(v) => onFiltersChange({ ...filters, from: v })}
+                placeholder="Start date"
+                className="w-44"
               />
             </div>
             <div className="space-y-1">
               <Label htmlFor="to" className="text-xs">To</Label>
-              <Input
+              <DatePicker
                 id="to"
-                type="date"
                 value={filters.to ?? ""}
-                onChange={(e) => onFiltersChange({ ...filters, to: e.target.value })}
-                className="w-40"
+                min={filters.from || undefined}
+                onChange={(v) => onFiltersChange({ ...filters, to: v })}
+                placeholder="End date"
+                className="w-44"
               />
             </div>
             {extraFilters}

@@ -8,8 +8,8 @@ import {
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -282,12 +282,12 @@ export default function MasterActivityPage() {
               <Label htmlFor="f_from" className="text-xs uppercase tracking-wide text-muted-foreground">
                 From
               </Label>
-              <Input
+              <DatePicker
                 id="f_from"
-                type="date"
                 value={dateFrom}
-                max={dateTo || undefined}
-                onChange={(e) => setDateFrom(e.target.value)}
+                max={dateTo || todayIso()}
+                onChange={setDateFrom}
+                placeholder="Any start date"
               />
             </div>
 
@@ -295,13 +295,13 @@ export default function MasterActivityPage() {
               <Label htmlFor="f_to" className="text-xs uppercase tracking-wide text-muted-foreground">
                 To
               </Label>
-              <Input
+              <DatePicker
                 id="f_to"
-                type="date"
                 value={dateTo}
                 min={dateFrom || undefined}
                 max={todayIso()}
-                onChange={(e) => setDateTo(e.target.value)}
+                onChange={setDateTo}
+                placeholder="Any end date"
               />
             </div>
           </div>

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import api from "@/lib/api"
@@ -140,7 +141,14 @@ export function CreateGaugeDialog({ open, onOpenChange, onCreated }: Props) {
           </div>
           <div className="col-span-2 space-y-2">
             <Label htmlFor="last">Last Calibrated (optional — set now if known)</Label>
-            <Input id="last" type="date" value={lastCal} onChange={(e) => setLastCal(e.target.value)} disabled={submitting} />
+            <DatePicker
+              id="last"
+              value={lastCal}
+              onChange={setLastCal}
+              disabled={submitting}
+              max={new Date().toISOString().slice(0, 10)}
+              placeholder="Not calibrated yet"
+            />
           </div>
 
           <DialogFooter className="col-span-2">

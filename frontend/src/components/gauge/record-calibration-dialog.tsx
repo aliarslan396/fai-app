@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -123,7 +124,15 @@ export function RecordCalibrationDialog({ open, onOpenChange, gauge, onDone }: P
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="cal-date">Calibrated On</Label>
-              <Input id="cal-date" type="date" value={calibratedAt} onChange={(e) => setCalibratedAt(e.target.value)} disabled={submitting} required />
+              <DatePicker
+                id="cal-date"
+                value={calibratedAt}
+                onChange={setCalibratedAt}
+                disabled={submitting}
+                clearable={false}
+                max={new Date().toISOString().slice(0, 10)}
+                placeholder="Select date"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="cal-by">Calibrated By *</Label>

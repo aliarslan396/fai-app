@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -115,7 +116,13 @@ export function OotAssessmentDialog({ gaugeId, calibration, open, onOpenChange, 
         <div className="space-y-3">
           <div className="space-y-1">
             <Label>Last Known Good Calibration Date</Label>
-            <Input type="date" value={lastGood} onChange={(e) => setLastGood(e.target.value)} disabled={busy} />
+            <DatePicker
+              value={lastGood}
+              onChange={setLastGood}
+              disabled={busy}
+              max={new Date().toISOString().slice(0, 10)}
+              placeholder="Select calibration date"
+            />
           </div>
 
           <div className="space-y-1">
