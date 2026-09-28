@@ -83,11 +83,12 @@ Route::prefix('api/v1')
         Route::middleware(['auth:sanctum', 'tenant.user'])->post('auth/verify-mfa', [TenantAuthController::class, 'verifyMfa']);
 
         // Protected
-        Route::middleware(['auth:sanctum', 'tenant.user'])->group(function () {
+        Route::middleware(['auth:sanctum', 'tenant.user', 'password.rotation'])->group(function () {
             Route::prefix('auth')->group(function () {
                 Route::post('logout', [TenantAuthController::class, 'logout']);
                 Route::get('me', [TenantAuthController::class, 'me']);
                 Route::patch('me', [TenantAuthController::class, 'updateMe']);
+                Route::middleware('throttle:5,60')->post('change-password', [TenantAuthController::class, 'changePassword']);
                 Route::post('mfa/setup', [TenantAuthController::class, 'setupMfa']);
                 Route::post('mfa/confirm', [TenantAuthController::class, 'confirmMfa']);
                 Route::post('mfa/disable', [TenantAuthController::class, 'disableMfa']);

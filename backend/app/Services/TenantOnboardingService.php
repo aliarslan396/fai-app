@@ -63,7 +63,7 @@ class TenantOnboardingService
             ],
             'admin_name' => 'required|string|min:2|max:100',
             'admin_email' => 'required|email',
-            'admin_password' => 'required|string|min:8',
+            'admin_password' => ['required', 'string', new \App\Rules\PasswordPolicy()],
         ]);
 
         $validator->validate();

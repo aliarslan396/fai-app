@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\PasswordResetCode;
 use App\Models\TenantUser;
+use App\Rules\PasswordPolicy;
 use App\Services\MfaService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -149,6 +150,7 @@ class TenantAuthController extends Controller
 
         $userArr = $user->load('roles')->toArray();
         $userArr['permissions'] = $user->getAllPermissions()->map(fn ($p) => ['name' => $p->name])->values();
+        $userArr['password_expired'] = $user->passwordExpired();
 
         return response()->json([
             'user' => $userArr,
@@ -159,6 +161,15 @@ class TenantAuthController extends Controller
                 'logo_url' => $tenant->logo_url,
                 'primary_color' => $tenant->primary_color,
                 'status' => $tenant->status,
+            ],
+            // Served from config so the UI never hardcodes a second copy
+            // of the rules and drift between them is impossible.
+            'password_policy' => [
+                'min_length' => (int) config('password_policy.min_length'),
+                'require_mixed_case' => (bool) config('password_policy.require_mixed_case'),
+                'require_numbers' => (bool) config('password_policy.require_numbers'),
+                'require_symbols' => (bool) config('password_policy.require_symbols'),
+                'requirements' => PasswordPolicy::describe(),
             ],
             'context' => 'tenant',
         ]);
@@ -222,10 +233,14 @@ class TenantAuthController extends Controller
      */
     public function resetPassword(Request $request): JsonResponse
     {
+        // Password strength is validated in a second pass below, once the
+        // code has been verified and we know which account this is — the
+        // reuse check needs the user's history, which we cannot look up
+        // before the identity is established.
         Validator::make($request->all(), [
             'email' => 'required|email',
             'code' => 'required|string|size:6',
-            'password' => 'required|string|min:8|confirmed',
+            'password' => 'required|string|confirmed',
         ])->validate();
 
         $resetCode = PasswordResetCode::where('email', $request->email)
@@ -263,11 +278,22 @@ class TenantAuthController extends Controller
             ]);
         }
 
+        // Now that the account is known, enforce the full policy including
+        // the reuse check against this user's history.
+        Validator::make($request->all(), [
+            'password' => ['required', 'string', new PasswordPolicy($user)],
+        ])->validate();
+
+        $newHash = Hash::make($request->password);
+
         $user->update([
-            'password' => Hash::make($request->password),
+            'password' => $newHash,
+            'password_changed_at' => now(),
             'failed_login_attempts' => 0,
             'locked_until' => null,
         ]);
+
+        $user->recordPasswordHistory($newHash);
 
         $resetCode->update(['used_at' => now()]);
 
@@ -280,6 +306,62 @@ class TenantAuthController extends Controller
 
         return response()->json([
             'message' => 'Password reset successful. Please sign in with your new password.',
+        ]);
+    }
+
+    /**
+     * Change your own password while signed in.
+     *
+     * Required for forced rotation to mean anything — without this the
+     * only route to a new password was the emailed reset code, which is
+     * a poor experience for someone simply being asked to rotate.
+     *
+     * Requires the current password (21 CFR Part 11 §11.200(a)(1): a
+     * signing credential change must be performed by its genuine owner),
+     * enforces the full policy including reuse history, and revokes every
+     * other session so a stolen token cannot outlive the change.
+     */
+    public function changePassword(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        Validator::make($request->all(), [
+            'current_password' => 'required|string',
+            'password' => ['required', 'string', 'confirmed', new PasswordPolicy($user)],
+        ])->validate();
+
+        if (! Hash::check($request->current_password, $user->password)) {
+            AuditLog::record('password.change.failed', [
+                'user_id' => $user->id,
+                'meta' => ['reason' => 'current_password_incorrect'],
+            ]);
+
+            throw ValidationException::withMessages([
+                'current_password' => ['Current password is incorrect.'],
+            ]);
+        }
+
+        $newHash = Hash::make($request->password);
+
+        $user->update([
+            'password' => $newHash,
+            'password_changed_at' => now(),
+        ]);
+
+        $user->recordPasswordHistory($newHash);
+
+        // Drop every other session; the caller keeps the token they are
+        // holding so a rotation does not bounce them to the login screen.
+        $currentTokenId = $user->currentAccessToken()?->id;
+        $user->tokens()->when($currentTokenId, fn ($q) => $q->where('id', '!=', $currentTokenId))->delete();
+
+        AuditLog::record('password.change.completed', [
+            'user_id' => $user->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Password updated.',
+            'password_changed_at' => $user->password_changed_at,
         ]);
     }
 

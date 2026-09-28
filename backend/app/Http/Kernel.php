@@ -66,5 +66,6 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'tenant.user' => \App\Http\Middleware\EnsureTenantUser::class,
         'master.user' => \App\Http\Middleware\EnsureMasterUser::class,
+        'password.rotation' => \App\Http\Middleware\EnforcePasswordRotation::class,
     ];
 }

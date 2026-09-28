@@ -31,11 +31,12 @@ Route::prefix('v1')->group(function () {
         Route::middleware(['auth:sanctum', 'master.user'])->group(function () {
             Route::post('logout', [AuthController::class, 'logout']);
             Route::get('me', [AuthController::class, 'me']);
+            Route::middleware('throttle:5,60')->post('change-password', [AuthController::class, 'changePassword']);
         });
     });
 
     // Master super admin protected routes
-    Route::middleware(['auth:sanctum', 'master.user'])->prefix('master')->group(function () {
+    Route::middleware(['auth:sanctum', 'master.user', 'password.rotation'])->prefix('master')->group(function () {
         Route::get('tenants', [TenantController::class, 'index']);
         Route::post('tenants', [TenantController::class, 'store']);
         Route::get('tenants/{id}', [TenantController::class, 'show']);

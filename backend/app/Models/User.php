@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\TracksPasswordHistory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -17,13 +18,14 @@ use Laravel\Sanctum\HasApiTokens;
  */
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes, TracksPasswordHistory;
 
     protected $fillable = [
         'name',
         'email',
         'phone',
         'password',
+        'password_changed_at',
         'status',
         'master_role',
         'two_factor_secret',
@@ -48,6 +50,7 @@ class User extends Authenticatable
         'two_factor_confirmed_at' => 'datetime',
         'last_login_at' => 'datetime',
         'locked_until' => 'datetime',
+        'password_changed_at' => 'datetime',
         'two_factor_enabled' => 'boolean',
         'password' => 'hashed',
     ];
@@ -70,5 +73,20 @@ class User extends Authenticatable
     public function isSuperAdmin(): bool
     {
         return $this->master_role === 'super_admin';
+    }
+
+    public static function passwordHistoryModel(): string
+    {
+        return CentralPasswordHistory::class;
+    }
+
+    /**
+     * Every central account is privileged — this table only holds master
+     * admins, who can provision, suspend and purge any tenant — so all of
+     * them rotate rather than only a named subset.
+     */
+    protected function isSubjectToRotation(): bool
+    {
+        return true;
     }
 }

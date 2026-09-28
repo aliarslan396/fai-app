@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AuditLog;
 use App\Models\Tenant;
 use App\Models\TenantUser;
+use App\Rules\PasswordPolicy;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -41,23 +42,28 @@ class TenantUserService
             'name' => 'required|string|min:2|max:100',
             'email' => 'required|email|unique:users,email',
             'phone' => 'nullable|string|max:30',
-            'password' => 'required|string|min:8',
+            'password' => ['required', 'string', new PasswordPolicy()],
             'role' => 'required|string|in:' . implode(',', self::VALID_ROLES),
             'status' => 'sometimes|string|in:active,disabled,pending',
             'cert_number' => 'nullable|string|max:50',
             'signature_role_title' => 'nullable|string|max:100',
         ])->validate();
 
+        $passwordHash = Hash::make($data['password']);
+
         $user = TenantUser::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'phone' => $data['phone'] ?? null,
-            'password' => Hash::make($data['password']),
+            'password' => $passwordHash,
+            'password_changed_at' => now(),
             'status' => $data['status'] ?? 'active',
             'email_verified_at' => now(),
             'cert_number' => $data['cert_number'] ?? null,
             'signature_role_title' => $data['signature_role_title'] ?? null,
         ]);
+
+        $user->recordPasswordHistory($passwordHash);
 
         $user->assignRole($data['role']);
 
@@ -78,7 +84,7 @@ class TenantUserService
             'name' => 'sometimes|string|min:2|max:100',
             'email' => 'sometimes|email|unique:users,email,' . $user->id,
             'phone' => 'nullable|string|max:30',
-            'password' => 'sometimes|string|min:8',
+            'password' => ['sometimes', 'string', new PasswordPolicy($user)],
             'role' => 'sometimes|string|in:' . implode(',', self::VALID_ROLES),
             'status' => 'sometimes|string|in:active,disabled,pending',
             'cert_number' => 'sometimes|nullable|string|max:50',
@@ -95,7 +101,10 @@ class TenantUserService
         }
 
         if (isset($data['password'])) {
-            $user->password = Hash::make($data['password']);
+            $newHash = Hash::make($data['password']);
+            $user->password = $newHash;
+            $user->password_changed_at = now();
+            $user->recordPasswordHistory($newHash);
         }
 
         $user->save();

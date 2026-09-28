@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\TracksPasswordHistory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -18,7 +19,7 @@ use Spatie\Permission\Traits\HasRoles;
  */
 class TenantUser extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable, SoftDeletes, HasRoles;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes, HasRoles, TracksPasswordHistory;
 
     protected $table = 'users';
 
@@ -29,6 +30,7 @@ class TenantUser extends Authenticatable
         'email',
         'phone',
         'password',
+        'password_changed_at',
         'status',
         'two_factor_secret',
         'two_factor_recovery_codes',
@@ -54,9 +56,26 @@ class TenantUser extends Authenticatable
         'two_factor_confirmed_at' => 'datetime',
         'last_login_at' => 'datetime',
         'locked_until' => 'datetime',
+        'password_changed_at' => 'datetime',
         'two_factor_enabled' => 'boolean',
         'password' => 'hashed',
     ];
+
+    public static function passwordHistoryModel(): string
+    {
+        return PasswordHistory::class;
+    }
+
+    /**
+     * Only the roles named in password_policy.rotation_roles rotate.
+     * Forcing every shop-floor account to change quarterly generates
+     * helpdesk load and pushes people toward weaker incrementing
+     * passwords without materially reducing risk.
+     */
+    protected function isSubjectToRotation(): bool
+    {
+        return $this->hasAnyRole(config('password_policy.rotation_roles'));
+    }
 
     public function trustedDevices()
     {
