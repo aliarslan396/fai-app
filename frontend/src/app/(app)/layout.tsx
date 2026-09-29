@@ -27,7 +27,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       return
     }
 
-    if (!user && !fetchedOnce.current) {
+    // Refresh once per mount even when a persisted user is present —
+    // password_expired, permissions and the password policy all live
+    // server-side and a cached user would otherwise never pick up a
+    // change until the next login.
+    if (!fetchedOnce.current) {
       fetchedOnce.current = true
       fetchMe()
     }

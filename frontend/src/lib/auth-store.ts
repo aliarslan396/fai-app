@@ -155,6 +155,10 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         context: state.context,
         tenant: state.tenant,
+        // Persisted so the requirements list survives a reload. It is
+        // still refreshed by fetchMe, so a server-side policy change
+        // propagates on the next load rather than sticking forever.
+        passwordPolicy: state.passwordPolicy,
         isAuthenticated: state.isAuthenticated,
       }),
     }

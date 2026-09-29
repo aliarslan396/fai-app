@@ -17,6 +17,19 @@ import { useAuthStore } from "@/lib/auth-store"
 export default function MasterSettingsPage() {
   const { user, passwordPolicy } = useAuthStore()
 
+  // The API is the source of truth, but render something sensible if the
+  // policy has not arrived yet rather than an empty card.
+  const requirements = passwordPolicy?.requirements?.length
+    ? passwordPolicy.requirements
+    : [
+        `At least ${passwordPolicy?.min_length ?? 12} characters`,
+        "Upper and lower case letters",
+        "At least one number",
+        "At least one symbol",
+        "Not a common or easily guessed password",
+        "Not one of your recent passwords",
+      ]
+
   return (
     <div className="space-y-6">
       <div>
@@ -53,7 +66,7 @@ export default function MasterSettingsPage() {
         </CardHeader>
         <CardContent>
           <ul className="space-y-1.5 text-sm text-muted-foreground">
-            {(passwordPolicy?.requirements ?? []).map((requirement) => (
+            {requirements.map((requirement) => (
               <li key={requirement} className="flex items-start gap-2">
                 <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />
                 {requirement}
