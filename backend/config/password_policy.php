@@ -38,12 +38,18 @@ return [
     'history_count' => (int) env('PASSWORD_HISTORY_COUNT', 5),
 
     /*
-     * Forced rotation. Applies only to the roles listed below — rotating
-     * every shop-floor account quarterly generates helpdesk load without
-     * meaningfully reducing risk, and tends to push people toward weaker
-     * incrementing passwords.
+     * Forced rotation.
+     *
+     * OFF by default — not in PROJECT_PLAN.md, which says nothing about
+     * password rotation. Came from the reseller compliance matrix
+     * (21 CFR Part 11 §11.300(b)) rather than the contracted scope.
+     *
+     * Set PASSWORD_ROTATION_DAYS=90 to enable. Applies only to the roles
+     * below when on — rotating every shop-floor account quarterly
+     * generates helpdesk load without meaningfully reducing risk, and
+     * tends to push people toward weaker incrementing passwords.
      */
-    'rotation_days' => (int) env('PASSWORD_ROTATION_DAYS', 90),
+    'rotation_days' => (int) env('PASSWORD_ROTATION_DAYS', 0),
 
     'rotation_roles' => ['admin', 'qa_manager'],
 ];

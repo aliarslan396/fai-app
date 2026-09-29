@@ -1,10 +1,25 @@
 <?php
 
 /**
- * Session and MFA controls (21 CFR Part 11 §11.10(d) — system access
- * limited to authorised individuals; §11.300(d) — transaction
- * safeguards). Kept alongside config/password_policy.php so every
- * credential control an auditor asks about lives in one place.
+ * Session and MFA controls.
+ *
+ * ── NOT IN THE CLIENT SPEC ──────────────────────────────────────────
+ * PROJECT_PLAN.md contains no mention of MFA, session timeout, password
+ * rotation or 21 CFR Part 11. Its security requirements are limited to
+ * bcrypt hashing, session regeneration on login, and password
+ * re-verification before signing (lines 444, 579, 802).
+ *
+ * These controls came from the aerospace-reseller compliance matrix, on
+ * the assumption that a product resold to regulated shops would need
+ * them. That is a reasonable assumption but it is not contracted, so
+ * everything here ships DISABLED by default and is switched on per
+ * deployment via env.
+ *
+ * Enable when a customer actually asks for Part 11 alignment:
+ *   SESSION_IDLE_TIMEOUT_MINUTES=60
+ *   SESSION_ABSOLUTE_LIFETIME_MINUTES=720
+ *   MFA_REQUIRED_ROLES=admin,qa_manager
+ * ─────────────────────────────────────────────────────────────────────
  */
 return [
     /*
@@ -16,7 +31,7 @@ return [
      * parallel mechanism, so a stale token fails at the guard rather
      * than deeper in the request.
      */
-    'idle_timeout_minutes' => (int) env('SESSION_IDLE_TIMEOUT_MINUTES', 60),
+    'idle_timeout_minutes' => (int) env('SESSION_IDLE_TIMEOUT_MINUTES', 0),
 
     /*
      * Absolute cap measured from token creation, regardless of activity.
@@ -24,7 +39,7 @@ return [
      * keeps it warm. Sanctum enforces this via config/sanctum.php,
      * which reads the value below.
      */
-    'absolute_lifetime_minutes' => (int) env('SESSION_ABSOLUTE_LIFETIME_MINUTES', 720),
+    'absolute_lifetime_minutes' => (int) env('SESSION_ABSOLUTE_LIFETIME_MINUTES', 0),
 
     /*
      * Roles that must enrol in TOTP before they can use the app.
@@ -34,9 +49,10 @@ return [
      * for them is the gap — a stolen password on a qa_manager account
      * is enough to forge an electronic signature.
      *
-     * Empty this array to make MFA optional for everyone.
+     * Empty (the default) makes MFA optional for everyone — TOTP is
+     * still available from the profile page, just not compulsory.
      */
-    'mfa_required_roles' => ['admin', 'qa_manager'],
+    'mfa_required_roles' => array_filter(explode(',', (string) env('MFA_REQUIRED_ROLES', ''))),
 
     /*
      * Master super admins require MFA when true.
