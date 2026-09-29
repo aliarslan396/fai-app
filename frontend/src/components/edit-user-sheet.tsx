@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
+import { PasswordRequirements } from "@/components/ui/password-field"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -227,6 +228,7 @@ export function EditUserSheet({ user, onOpenChange, onSuccess }: Props) {
                 disabled={busy}
                 {...register("password")}
               />
+              <PasswordRequirements value={watch("password") ?? ""} />
               <p className="text-xs text-muted-foreground">
                 Set a new password only if you want to reset it.
               </p>

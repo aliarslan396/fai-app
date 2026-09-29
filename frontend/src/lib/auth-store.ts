@@ -13,6 +13,21 @@ export interface User {
   signature_role_title?: string | null
   roles?: Array<{ name: string }>
   permissions?: Array<{ name: string }>
+  /** True when a privileged account is past its rotation window. */
+  password_expired?: boolean
+}
+
+/**
+ * Served by /auth/me on both surfaces so the UI renders requirements
+ * from backend config rather than keeping a second copy that can drift
+ * out of step with what the API actually enforces.
+ */
+export interface PasswordPolicy {
+  min_length: number
+  require_mixed_case: boolean
+  require_numbers: boolean
+  require_symbols: boolean
+  requirements: string[]
 }
 
 export interface TenantContext {
@@ -35,6 +50,7 @@ interface AuthState {
   token: string | null
   context: AuthContext | null
   tenant: TenantContext | null
+  passwordPolicy: PasswordPolicy | null
   isAuthenticated: boolean
   isLoading: boolean
   mfaRequired: boolean
@@ -56,6 +72,7 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       context: null,
       tenant: null,
+      passwordPolicy: null,
       isAuthenticated: false,
       isLoading: false,
       mfaRequired: false,
@@ -105,6 +122,7 @@ export const useAuthStore = create<AuthState>()(
             user: data.user,
             context: data.context,
             tenant: data.tenant ?? null,
+            passwordPolicy: data.password_policy ?? null,
             isAuthenticated: true,
           })
         } catch {

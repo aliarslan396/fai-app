@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MfaSection } from "@/components/mfa-section"
+import { ChangePasswordForm } from "@/components/change-password-form"
 import { useAuthStore } from "@/lib/auth-store"
 import api from "@/lib/api"
 import { getErrorMessage } from "@/lib/errors"
@@ -150,15 +151,29 @@ export default function ProfilePage() {
       )}
 
       {!isMaster && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Security</CardTitle>
-            <CardDescription>Two-factor authentication and password</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <MfaSection />
-          </CardContent>
-        </Card>
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Security</CardTitle>
+              <CardDescription>Two-factor authentication</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MfaSection />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Change password</CardTitle>
+              <CardDescription>
+                Signs out every other session. This one stays active.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChangePasswordForm />
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   )

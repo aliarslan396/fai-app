@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
+import { PasswordRequirements } from "@/components/ui/password-field"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -41,7 +42,7 @@ const schema = z.object({
   name: z.string().min(2, "At least 2 characters").max(100),
   email: z.string().email("Invalid email"),
   phone: z.string().optional(),
-  password: z.string().min(8, "At least 8 characters"),
+  password: z.string().min(1, "Password required"),
   role: z.string().min(1, "Pick a role"),
   cert_number: z.string().max(50).optional(),
   signature_role_title: z.string().max(100).optional(),
@@ -186,11 +187,12 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: Props) {
             <Label htmlFor="password">Temporary Password</Label>
             <PasswordInput
               id="password"
-              placeholder="At least 8 characters"
+              placeholder="Choose a strong password"
               autoComplete="new-password"
               disabled={busy}
               {...register("password")}
             />
+            <PasswordRequirements value={watch("password") ?? ""} />
             {errors.password && (
               <p className="text-sm text-destructive">{errors.password.message}</p>
             )}

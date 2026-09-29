@@ -11,6 +11,7 @@ import { Check, Copy, Loader2, Rocket, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
+import { PasswordRequirements } from "@/components/ui/password-field"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import api from "@/lib/api"
@@ -26,7 +27,7 @@ const signupSchema = z.object({
     .regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/, "Lowercase letters, numbers, hyphens only"),
   admin_name: z.string().min(2, "Name required").max(100),
   admin_email: z.string().email("Invalid email"),
-  admin_password: z.string().min(8, "At least 8 characters"),
+  admin_password: z.string().min(1, "Password required"),
 })
 
 type SignupForm = z.infer<typeof signupSchema>
@@ -257,9 +258,13 @@ export default function SignupPage() {
                 <Label htmlFor="admin_password">Password</Label>
                 <PasswordInput
                   id="admin_password"
-                  placeholder="At least 8 characters"
+                  placeholder="Choose a strong password"
                   disabled={isLoading}
                   {...register("admin_password")}
+                />
+                <PasswordRequirements
+                  value={watch("admin_password") ?? ""}
+                  contextTerms={[watch("company_name") ?? "", watch("admin_name") ?? ""]}
                 />
                 {errors.admin_password && (
                   <p className="text-sm text-destructive">{errors.admin_password.message}</p>

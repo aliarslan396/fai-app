@@ -46,6 +46,18 @@ api.interceptors.response.use(
     const status = error.response?.status
     const data = error.response?.data
 
+    // Password past its rotation window. Flip the flag rather than
+    // logging out — the user needs a working session to reach the
+    // change-password form, which is the only thing that clears this.
+    // The gate in the app layout renders off this flag.
+    if (status === 403 && data?.code === "PASSWORD_EXPIRED") {
+      const { user } = useAuthStore.getState()
+      if (user && !user.password_expired) {
+        useAuthStore.setState({ user: { ...user, password_expired: true } })
+      }
+      return Promise.reject(error)
+    }
+
     // Suspended/cancelled tenant — force logout + show banner
     if (status === 403 && data?.code === "TENANT_INACTIVE") {
       const { clearAuth } = useAuthStore.getState()

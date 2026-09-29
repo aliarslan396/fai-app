@@ -11,6 +11,7 @@ import { ArrowLeft, KeyRound, Loader2, Mail, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
+import { PasswordRequirements } from "@/components/ui/password-field"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import api from "@/lib/api"
@@ -26,7 +27,7 @@ const resetSchema = z
   .object({
     email: z.string().email(),
     code: z.string().regex(/^\d{6}$/, "6-digit code required"),
-    password: z.string().min(8, "At least 8 characters"),
+    password: z.string().min(1, "Password required"),
     password_confirmation: z.string(),
   })
   .refine((d) => d.password === d.password_confirmation, {
@@ -209,11 +210,12 @@ export default function ForgotPasswordPage() {
                     <Label htmlFor="password">New password</Label>
                     <PasswordInput
                       id="password"
-                      placeholder="At least 8 characters"
+                      placeholder="Choose a strong password"
                       autoComplete="new-password"
                       disabled={isLoading}
                       {...resetForm.register("password")}
                     />
+                    <PasswordRequirements value={resetForm.watch("password") ?? ""} />
                     {resetForm.formState.errors.password && (
                       <p className="text-sm text-destructive">
                         {resetForm.formState.errors.password.message}
