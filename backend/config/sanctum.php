@@ -46,7 +46,16 @@ return [
     |
     */
 
-    'expiration' => null,
+    /*
+     * Absolute token lifetime from creation, in minutes. Was null —
+     * meaning tokens never expired, so one lifted from a laptop stayed
+     * valid forever.
+     *
+     * Reads the same env var as session_policy.absolute_lifetime_minutes;
+     * config files load in an unspecified order, so this cannot call
+     * config() to fetch it.
+     */
+    'expiration' => (int) env('SESSION_ABSOLUTE_LIFETIME_MINUTES', 720),
 
     /*
     |--------------------------------------------------------------------------

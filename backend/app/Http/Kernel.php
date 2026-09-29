@@ -67,5 +67,7 @@ class Kernel extends HttpKernel
         'tenant.user' => \App\Http\Middleware\EnsureTenantUser::class,
         'master.user' => \App\Http\Middleware\EnsureMasterUser::class,
         'password.rotation' => \App\Http\Middleware\EnforcePasswordRotation::class,
+        'session.idle' => \App\Http\Middleware\EnforceIdleTimeout::class,
+        'mfa.required' => \App\Http\Middleware\EnforceMfaEnrolment::class,
     ];
 }

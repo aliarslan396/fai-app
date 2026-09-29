@@ -15,6 +15,8 @@ export interface User {
   permissions?: Array<{ name: string }>
   /** True when a privileged account is past its rotation window. */
   password_expired?: boolean
+  /** True when the role demands TOTP and the user has not enrolled. */
+  mfa_required?: boolean
 }
 
 /**

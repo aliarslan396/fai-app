@@ -151,6 +151,10 @@ class TenantAuthController extends Controller
         $userArr = $user->load('roles')->toArray();
         $userArr['permissions'] = $user->getAllPermissions()->map(fn ($p) => ['name' => $p->name])->values();
         $userArr['password_expired'] = $user->passwordExpired();
+        // Drives the enrolment gate — true only when the role demands
+        // MFA and the user has not yet confirmed a TOTP secret.
+        $userArr['mfa_required'] = $user->hasAnyRole((array) config('session_policy.mfa_required_roles'))
+            && ! $user->hasMfaEnabled();
 
         return response()->json([
             'user' => $userArr,

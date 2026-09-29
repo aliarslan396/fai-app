@@ -83,7 +83,13 @@ Route::prefix('api/v1')
         Route::middleware(['auth:sanctum', 'tenant.user'])->post('auth/verify-mfa', [TenantAuthController::class, 'verifyMfa']);
 
         // Protected
-        Route::middleware(['auth:sanctum', 'tenant.user', 'password.rotation'])->group(function () {
+        Route::middleware([
+            'auth:sanctum',
+            'tenant.user',
+            'session.idle',
+            'password.rotation',
+            'mfa.required',
+        ])->group(function () {
             Route::prefix('auth')->group(function () {
                 Route::post('logout', [TenantAuthController::class, 'logout']);
                 Route::get('me', [TenantAuthController::class, 'me']);

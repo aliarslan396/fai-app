@@ -9,6 +9,7 @@ import { AppHeader } from "@/components/app-header"
 import { TrialBanner } from "@/components/trial-banner"
 import { BrandTheme } from "@/components/brand-theme"
 import { PasswordExpiredGate } from "@/components/password-expired-gate"
+import { MfaRequiredGate } from "@/components/mfa-required-gate"
 import { useAuthStore } from "@/lib/auth-store"
 import { useHasHydrated } from "@/lib/use-hydration"
 import api from "@/lib/api"
@@ -83,6 +84,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden">
       <BrandTheme />
       <PasswordExpiredGate />
+      <MfaRequiredGate />
       <AppSidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <AppHeader />

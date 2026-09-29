@@ -114,6 +114,8 @@ class AuthController extends Controller
         $user = $request->user();
         $userArr = $user->toArray();
         $userArr['password_expired'] = $user->passwordExpired();
+        $userArr['mfa_required'] = (bool) config('session_policy.mfa_required_for_master')
+            && ! $user->hasMfaEnabled();
 
         return response()->json([
             'user' => $userArr,

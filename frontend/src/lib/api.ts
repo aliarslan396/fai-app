@@ -58,6 +58,17 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
+    // Privileged role has not enrolled in TOTP. Flip the flag so the
+    // enrolment gate renders; the setup endpoints stay reachable, so
+    // the user can resolve it without being signed out.
+    if (status === 403 && data?.code === "MFA_REQUIRED") {
+      const { user } = useAuthStore.getState()
+      if (user && !user.mfa_required) {
+        useAuthStore.setState({ user: { ...user, mfa_required: true } })
+      }
+      return Promise.reject(error)
+    }
+
     // Suspended/cancelled tenant — force logout + show banner
     if (status === 403 && data?.code === "TENANT_INACTIVE") {
       const { clearAuth } = useAuthStore.getState()

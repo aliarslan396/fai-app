@@ -36,7 +36,13 @@ Route::prefix('v1')->group(function () {
     });
 
     // Master super admin protected routes
-    Route::middleware(['auth:sanctum', 'master.user', 'password.rotation'])->prefix('master')->group(function () {
+    Route::middleware([
+        'auth:sanctum',
+        'master.user',
+        'session.idle',
+        'password.rotation',
+        'mfa.required',
+    ])->prefix('master')->group(function () {
         Route::get('tenants', [TenantController::class, 'index']);
         Route::post('tenants', [TenantController::class, 'store']);
         Route::get('tenants/{id}', [TenantController::class, 'show']);
