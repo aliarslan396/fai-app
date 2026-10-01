@@ -55,7 +55,7 @@ return [
      * config files load in an unspecified order, so this cannot call
      * config() to fetch it.
      */
-    'expiration' => ((int) env('SESSION_ABSOLUTE_LIFETIME_MINUTES', 0)) ?: null,
+    'expiration' => ((int) env('SESSION_ABSOLUTE_LIFETIME_MINUTES', 720)) ?: null,
 
     /*
     |--------------------------------------------------------------------------

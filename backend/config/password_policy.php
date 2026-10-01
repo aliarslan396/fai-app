@@ -49,7 +49,7 @@ return [
      * generates helpdesk load without meaningfully reducing risk, and
      * tends to push people toward weaker incrementing passwords.
      */
-    'rotation_days' => (int) env('PASSWORD_ROTATION_DAYS', 0),
+    'rotation_days' => (int) env('PASSWORD_ROTATION_DAYS', 90),
 
     'rotation_roles' => ['admin', 'qa_manager'],
 ];

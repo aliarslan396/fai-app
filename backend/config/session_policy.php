@@ -31,7 +31,7 @@ return [
      * parallel mechanism, so a stale token fails at the guard rather
      * than deeper in the request.
      */
-    'idle_timeout_minutes' => (int) env('SESSION_IDLE_TIMEOUT_MINUTES', 0),
+    'idle_timeout_minutes' => (int) env('SESSION_IDLE_TIMEOUT_MINUTES', 120),
 
     /*
      * Absolute cap measured from token creation, regardless of activity.
@@ -39,7 +39,7 @@ return [
      * keeps it warm. Sanctum enforces this via config/sanctum.php,
      * which reads the value below.
      */
-    'absolute_lifetime_minutes' => (int) env('SESSION_ABSOLUTE_LIFETIME_MINUTES', 0),
+    'absolute_lifetime_minutes' => (int) env('SESSION_ABSOLUTE_LIFETIME_MINUTES', 720),
 
     /*
      * Roles that must enrol in TOTP before they can use the app.
@@ -51,6 +51,14 @@ return [
      *
      * Empty (the default) makes MFA optional for everyone — TOTP is
      * still available from the profile page, just not compulsory.
+     *
+     * Held off deliberately while the client previews the product: a
+     * first login that demands an authenticator app before showing
+     * anything is a poor front door for someone evaluating it. The
+     * enforcement path is built and tested — set the env var to turn
+     * it on, per deployment:
+     *
+     *   MFA_REQUIRED_ROLES=admin,qa_manager
      */
     'mfa_required_roles' => array_filter(explode(',', (string) env('MFA_REQUIRED_ROLES', ''))),
 
